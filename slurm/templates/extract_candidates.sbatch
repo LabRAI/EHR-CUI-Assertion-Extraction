@@ -18,15 +18,10 @@ OUTPUT_DIR=<PRIVATE_EXTRACTION_OUTPUT_DIR>
 cd "${PROJECT_DIR}"
 source .venv/bin/activate
 
-python scripts/extract_medcat_candidates.py \
+python scripts/run_extraction_auto.py \
   --notes-jsonl-gz "${NOTES_JSONL_GZ}" \
   --modelpack "${MODELPACK}" \
   --filter-policy "${POLICY}" \
-  --output-dir "${OUTPUT_DIR}" \
-  --selection-mode range \
-  --start-note-index 1 \
-  --end-note-index 5000 \
-  --output-mode strict_pre_umls \
-  --compress-output \
+  --output-root "${OUTPUT_DIR}" \
+  --variant-name shard_auto \
   --progress-every 500
-

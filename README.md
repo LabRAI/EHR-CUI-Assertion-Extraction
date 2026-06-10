@@ -42,6 +42,7 @@ docs/
 examples/
   toy_notes.jsonl                        # synthetic notes only
 scripts/
+  run_extraction_auto.py                 # deployment-friendly auto CPU runner
   shard_mimic_notes.py                   # local restricted-note sharding
   extract_medcat_candidates.py           # standard MedCAT + schema filter
   extract_medcat_candidates_prefork4.py  # optimized prefork benchmark extractor
@@ -77,10 +78,24 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+For more installation detail, see [`docs/installation.md`](docs/installation.md).
+
 Copy the policy template and fill in local paths outside git:
 
 ```bash
 cp configs/linker_filter_policy.example.json configs/linker_filter_policy.local.json
+```
+
+Run the deployment-friendly extractor. It automatically detects CPU cores from
+SLURM and uses the optimized prefork/batched linker path:
+
+```bash
+python scripts/run_extraction_auto.py \
+  --notes-jsonl-gz /path/to/private/note_shards/notes_shard_000000.jsonl.gz \
+  --modelpack /path/to/licensed/medcat_modelpack.zip \
+  --filter-policy configs/linker_filter_policy.local.json \
+  --output-root /path/to/private/extraction_auto \
+  --variant-name shard000_auto
 ```
 
 Shard notes through a SLURM job:
@@ -106,6 +121,10 @@ python scripts/extract_medcat_candidates.py \
   --output-mode strict_pre_umls \
   --compress-output
 ```
+
+For deployable CPU auto-detection and parallel task splitting, prefer
+`scripts/run_extraction_auto.py`; the lower-level extractor remains available
+for debugging and controlled ablations.
 
 Build a SNOMED-to-UMLS crosswalk from licensed UMLS files:
 
@@ -144,6 +163,13 @@ strict extraction target as the slower baseline. Use
 `scripts/summarize_extraction_scaling_benchmark.py` to reproduce a site-local
 runtime sweep.
 
+## Deployment Entry Point
+
+`scripts/run_extraction_auto.py` is the main deployment wrapper. It detects
+SLURM CPU allocation or local CPU affinity, builds an explicit task config,
+runs the prefork MedCAT extractor, and records a run manifest. See
+[`docs/deployment.md`](docs/deployment.md) for details.
+
 ## Notes
 
 - The code treats MedCAT as a candidate linker, not as the final labeler.
@@ -153,4 +179,3 @@ runtime sweep.
   reduced to plain present/absent assertions.
 - Family/social context is preserved in the schema so it can be included or
   excluded by downstream training views.
-
