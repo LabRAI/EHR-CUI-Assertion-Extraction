@@ -1,0 +1,3 @@
+{"note_index": 1, "subject_id": "SYN001", "hadm_id": "SYNV001", "category": "Discharge summary", "description": "Synthetic example", "text": "Assessment: Possible pneumonia with cough. No pleural effusion is seen. Labs show sodium 128 mmol/L and WBC 14.2 K/uL. Family history includes diabetes in the mother."}
+{"note_index": 2, "subject_id": "SYN002", "hadm_id": "SYNV002", "category": "Radiology", "description": "Synthetic example", "text": "Impression: No pneumothorax. Mild bibasilar atelectasis. Heart size is stable."}
+

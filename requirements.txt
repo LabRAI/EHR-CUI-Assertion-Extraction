@@ -1,0 +1,5 @@
+medcat>=2.0
+spacy>=3.7
+numpy>=1.24
+matplotlib>=3.7
+

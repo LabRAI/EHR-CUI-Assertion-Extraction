@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CUI Assertion Extraction Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pairs"],
+  "properties": {
+    "pairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+          "required": [
+            "cui",
+            "canonical_name",
+            "span",
+            "semantic_types",
+            "semantic_groups",
+            "concept_category",
+            "assertion_status",
+            "experiencer",
+            "temporality",
+            "value_status",
+            "numeric_value",
+            "unit",
+            "measurement_context",
+            "section",
+            "evidence",
+            "linker_name",
+            "linker_score",
+            "confidence",
+            "needs_review"
+          ],
+        "properties": {
+          "cui": {
+            "type": "string",
+            "pattern": "^C[0-9]{7}$"
+          },
+          "canonical_name": {
+            "type": "string"
+          },
+          "span": {
+            "type": "string"
+          },
+          "semantic_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "semantic_groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "concept_category": {
+            "type": "string",
+            "enum": [
+              "disease_or_diagnosis",
+              "symptom_or_sign",
+              "finding",
+              "lab_test",
+              "lab_result_or_value",
+              "procedure",
+              "medication_or_substance",
+              "anatomy",
+              "device",
+              "family_history",
+              "social_history",
+              "clinical_attribute",
+              "other",
+              "unknown"
+            ]
+          },
+          "assertion_status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "absent",
+              "possible",
+              "conditional",
+              "hypothetical",
+              "historical"
+            ]
+          },
+          "value_status": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "abnormal",
+              "high",
+              "low",
+              "positive",
+              "negative",
+              "improved",
+              "worsened",
+              "stable",
+              "not_applicable",
+              "unknown"
+            ]
+          },
+          "numeric_value": {
+            "type": ["number", "string", "null"]
+          },
+          "unit": {
+            "type": ["string", "null"]
+          },
+          "measurement_context": {
+            "type": "string",
+            "enum": [
+              "observed_patient",
+              "ventilator_set",
+              "ventilator_spontaneous",
+              "goal_or_target",
+              "medication_dose",
+              "not_applicable",
+              "unknown"
+            ]
+          },
+          "section": {
+            "type": "string"
+          },
+          "experiencer": {
+            "type": "string",
+            "enum": ["patient", "family", "other", "unknown"]
+          },
+          "temporality": {
+            "type": "string",
+            "enum": ["current", "historical", "future_or_hypothetical", "unknown"]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "linker_name": {
+            "type": "string",
+            "enum": ["medcat_umls_snomed", "scispacy_umls", "manual", "unknown"]
+          },
+          "linker_score": {
+            "type": ["number", "string", "null"]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "needs_review": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Restricted data and generated outputs
+data/
+models/
+outputs/
+results/
+logs/
+tmp/
+benchmarks/
+*.jsonl
+*.jsonl.gz
+!examples/*.jsonl
+*.csv
+*.csv.gz
+*.rrf
+*.RRF
+*.RRF.gz
+*.zip
+*.tar
+*.tar.gz
+
+# Local configs
+configs/*.local.json
+*.env
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,573 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Schema-Aware Linker Candidate Filtering Policy",
+  "version": "2026-05-14-v2.4.12-medcat-schema-aware",
+  "purpose": "Conservative MedCAT candidate filtering before creating supervised CUI/assertion targets from MIMIC notes.",
+  "status": "candidate_filter_only_not_final_training_labels",
+  "security": {
+    "active_workspace": "<PROJECT_DIR>",
+    "run_policy": "All MIMIC and MedCAT processing must run under SLURM, not on login nodes.",
+    "output_policy": "Write only bounded snippets/candidate metadata; chmod output files to 600 and output directories to 700.",
+    "raw_note_policy": "Do not write full notes to reports, memory, or chat."
+  },
+  "preferred_linker": {
+    "name": "MedCAT v2 SNOMED/UMLS modelpack",
+    "modelpack": "<PROJECT_DIR>/models/medcat/<licensed-medcat-modelpack>.zip",
+    "use_only_as_candidate_generator": true,
+    "rationale": "The licensed MIMIC-trained MedCAT pack has broad EHR coverage across diagnoses, findings, labs/vitals, medications, procedures, anatomy, devices, and social/family context. Raw output is too permissive for direct labels."
+  },
+  "fallback_linker": {
+    "name": "scispaCy UMLS EntityLinker",
+    "minimum_candidate_score": 0.9,
+    "use_only_as_candidate_generator": true,
+    "rationale": "Broad UMLS coverage but high false-positive risk on clinical abbreviations and generic words."
+  },
+  "id_system_warning": {
+    "current_medcat_pack": "SNOMED_CT_concept_ids_are_seen_in_outputs",
+    "final_training_need": "If the downstream target must be UMLS CUI format, add a SNOMED-to-UMLS mapping step before emitting final CUI/assertion pairs.",
+    "candidate_field_policy": "Candidate files should use concept_id and concept_id_system rather than pretending every ID is a UMLS CUI."
+  },
+  "actions": {
+    "keep_candidate": "Clinically meaningful candidate that can be passed to NuExtract/manual review as a possible target.",
+    "review_candidate": "Potentially useful but ambiguous; include with warning flags, not as an automatic target.",
+    "reject_candidate": "Do not pass as a target candidate, except in bounded reject-audit examples.",
+    "value_parse": "Lab/vital/measurement candidate; route to numeric value/unit/status extraction instead of present/absent assertion.",
+    "context_only": "Useful context cue for assertion, experiencer, temporality, section, or value interpretation, but not a standalone target."
+  },
+  "score_bin_policy": [
+    {
+      "score_bin": "0.99-1.00",
+      "default_action": "keep_candidate",
+      "override": "Reject/context-only still wins for generic, administrative, unit, route, header, person-role-only, or modifier spans."
+    },
+    {
+      "score_bin": "0.90-0.99",
+      "default_action": "keep_candidate",
+      "override": "Review high-risk abbreviations and category-specific artifacts."
+    },
+    {
+      "score_bin": "0.80-0.90",
+      "default_action": "review_candidate",
+      "override": "Keep only strong multi-word clinical concepts or parsed lab/vital values."
+    },
+    {
+      "score_bin": "0.70-0.80",
+      "default_action": "review_candidate",
+      "override": "Reject unless strong clinical phrase, family/social target, or parsed lab/vital value."
+    },
+    {
+      "score_bin": "0.50-0.70",
+      "default_action": "reject_candidate",
+      "override": "Allow review/value_parse for known lab abbreviations with a parsed value."
+    },
+    {
+      "score_bin": "0.00-0.50",
+      "default_action": "reject_candidate",
+      "override": "Allow value_parse only for strong lab/vital pattern with numeric value and unit/range context."
+    }
+  ],
+  "clinical_priority_type_ids": {
+    "9090192": {
+      "profile": "disorder_or_clinical_finding_like",
+      "default_action": "keep_candidate",
+      "notes": "Examples included dementia, Alzheimer's disease, hearing loss, visual impairment, atrial fibrillation, myocardial infarction."
+    },
+    "91187746": {
+      "profile": "substance_medication_lab_analyte_like",
+      "default_action": "keep_candidate",
+      "notes": "Can be drugs, medications, proteins, or lab analytes; lab/vital spans still require value parsing."
+    },
+    "28321150": {
+      "profile": "procedure_process_or_observable_like",
+      "default_action": "review_candidate",
+      "notes": "Can be real procedures/tests such as PEG/WBC, but also administrative processes like discharge planning."
+    },
+    "37552161": {
+      "profile": "anatomy_body_structure_like",
+      "default_action": "review_candidate",
+      "notes": "Useful in radiology/echo/respiratory context but often not a standalone assertion target."
+    },
+    "47503797": {
+      "profile": "care_procedure_or_service_like",
+      "default_action": "review_candidate",
+      "notes": "Can include therapy/home care/inpatient care; many service mentions should remain context-only."
+    },
+    "67667581": {
+      "profile": "finding_situation_or_behavior_like",
+      "default_action": "review_candidate",
+      "notes": "Useful for smoker, poor historian, impairment, but has many generic or spurious phrases."
+    },
+    "2680757": {
+      "profile": "observable_attribute_or_admin_mixed",
+      "default_action": "review_candidate",
+      "notes": "Includes BP/HR/RR/ADL/household composition but also dates/referrals/admin fields."
+    }
+  },
+  "context_or_noise_type_ids": {
+    "7882689": {
+      "profile": "qualifier_modifier_context",
+      "default_action": "context_only",
+      "notes": "Frequent examples: planned, current, acute, day, known, normal, mild, goal."
+    },
+    "43039974": {
+      "profile": "qualifier_relation_context",
+      "default_action": "context_only",
+      "notes": "Frequent examples: location, free of, with, certainty, is-a."
+    },
+    "31601201": {
+      "profile": "person_role",
+      "default_action": "context_only",
+      "notes": "Patient/family member/person roles. Use to infer experiencer only; do not emit as disease-style target."
+    },
+    "75168589": {
+      "profile": "place_or_care_location",
+      "default_action": "context_only",
+      "notes": "Hospital/ICU/location. Usually context, not final target."
+    },
+    "32816260": {
+      "profile": "record_device_or_admin_mixed",
+      "default_action": "review_candidate",
+      "notes": "Includes chart/telephone/admin artifacts and some device-like concepts."
+    },
+    "16939031": {
+      "profile": "occupation_or_care_role",
+      "default_action": "context_only",
+      "notes": "Physician, nurse, occupation, job. Usually context for social/admin sections."
+    },
+    "33782986": {
+      "profile": "event_or_disposition_mixed",
+      "default_action": "context_only",
+      "notes": "Discharge and event words are often workflow context."
+    },
+    "90170645": {
+      "profile": "generic_treatment_process",
+      "default_action": "context_only",
+      "notes": "Treatment and generic process words should not become standalone targets."
+    }
+  },
+  "reject_exact_spans": [
+    "admission",
+    "admission date",
+    "admitting diagnosis",
+    "allergies",
+    "application",
+    "assessment",
+    "chart",
+    "chief complaint",
+    "clip",
+    "completed by",
+    "consult",
+    "contact",
+    "course",
+    "current",
+    "daily",
+    "data",
+    "date",
+    "date range",
+    "day",
+    "discharge",
+    "discharge date",
+    "doctor",
+    "effort",
+    "events",
+    "exam",
+    "examination",
+    "female",
+    "final report",
+    "first name",
+    "following",
+    "given",
+    "hospital",
+    "identifier",
+    "information",
+    "is a",
+    "known",
+    "last name",
+    "location",
+    "medical",
+    "medications",
+    "n/a",
+    "normal",
+    "patient",
+    "physical exam",
+    "physical examination",
+    "plan",
+    "present",
+    "reason",
+    "reason for",
+    "referrals",
+    "review of systems",
+    "safe travels",
+    "service",
+    "services",
+    "status",
+    "study",
+    "team",
+    "telephone",
+    "total",
+    "travels",
+    "unit no",
+    "work",
+    "year"
+  ],
+  "context_only_spans": [
+    "acute",
+    "affect",
+    "arterial",
+    "bilateral",
+    "blood products",
+    "cardiac",
+    "chronic",
+    "clear",
+    "continue",
+    "decreased",
+    "dilated",
+    "fluid balance",
+    "free",
+    "function",
+    "goal",
+    "heart rhythm",
+    "history",
+    "history of",
+    "home",
+    "improved",
+    "intact",
+    "issues",
+    "left",
+    "likely",
+    "mild",
+    "mildly",
+    "moderate",
+    "negative",
+    "positive",
+    "previous",
+    "prior",
+    "pulmonary",
+    "range",
+    "reporting",
+    "respiratory support",
+    "resting",
+    "right",
+    "size",
+    "stable",
+    "systolic",
+    "thickened",
+    "vascular",
+    "wall",
+    "worsening"
+  ],
+  "unit_or_route_spans": [
+    "%",
+    "bpm",
+    "cmh2o",
+    "g/dl",
+    "iu",
+    "iv",
+    "k/ul",
+    "mcg/ml",
+    "meq/l",
+    "mg/dl",
+    "mg/hr",
+    "min",
+    "mm hg",
+    "mmhg",
+    "ng",
+    "po",
+    "prn",
+    "sec",
+    "tablet"
+  ],
+  "lab_or_vital_spans": [
+    "albumin",
+    "alkaline phosphatase",
+    "alt",
+    "ast",
+    "base excess",
+    "bilirubin",
+    "blood pressure",
+    "bp",
+    "bun",
+    "calcium",
+    "chloride",
+    "creatinine",
+    "ef",
+    "fio2",
+    "glucose",
+    "hco3",
+    "hct",
+    "heart rate",
+    "hematocrit",
+    "hemoglobin",
+    "hgb",
+    "hr",
+    "inr",
+    "lactate",
+    "left ventricular ejection fraction",
+    "lvef",
+    "magnesium",
+    "o2",
+    "pao2",
+    "pco2",
+    "ph",
+    "phosphorus",
+    "platelet",
+    "platelets",
+    "plt",
+    "potassium",
+    "pt",
+    "ptt",
+    "respiratory rate",
+    "rr",
+    "sao2",
+    "sodium",
+    "spo2",
+    "troponin",
+    "wbc",
+    "white blood cell count"
+  ],
+  "high_risk_abbreviations": [
+    "ABG",
+    "ADL",
+    "BP",
+    "CAD",
+    "CHF",
+    "COPD",
+    "CT",
+    "CXR",
+    "DC",
+    "EF",
+    "FHX",
+    "HD",
+    "HR",
+    "ICD",
+    "ICU",
+    "INR",
+    "IV",
+    "LVEF",
+    "MI",
+    "MR",
+    "MS",
+    "N/A",
+    "NG",
+    "NS",
+    "OT",
+    "PCA",
+    "PE",
+    "PEG",
+    "PT",
+    "PTT",
+    "RA",
+    "RR",
+    "SN",
+    "ST",
+    "SW",
+    "TBM",
+    "TF",
+    "TPN",
+    "WBC"
+  ],
+  "high_risk_false_positive_examples": [
+    {
+      "span": "EF",
+      "observed_bad_or_ambiguous_mapping": "MedCAT sometimes maps EF to Epilepsy even when the local text means ejection fraction.",
+      "preferred_handling": "If EF has nearby percent, LVEF/ejection-fraction wording, echo/TTE/cardiology context, heart-failure/cardiomyopathy context, or low/normal EF wording, override/review as Left ventricular ejection fraction rather than accepting the raw MedCAT concept."
+    },
+    {
+      "span": "PT",
+      "observed_bad_or_ambiguous_mapping": "Patient, physiotherapist, physical therapy, or prothrombin time depending on context",
+      "preferred_handling": "Never label directly from PT alone. Value-parse and override to prothrombin time if PT/PTT/INR or coagulation-lab context; context-only if physical therapy/rehab or pulse exam."
+    },
+    {
+      "span": "PT / PTT / INR",
+      "observed_bad_or_ambiguous_mapping": "Table-style coagulation panels can make a generic regex attach the whole PT/PTT fraction to INR or leave PT as Patient.",
+      "preferred_handling": "Parse PT/PTT/INR panels before generic lab regex. Extract PT and PTT as seconds and INR as unitless; normalize PT/PTT/INR concepts in coag-lab context."
+    },
+    {
+      "span": "HR/RR/BP/WBC and repeated lab/vital rows",
+      "observed_bad_or_ambiguous_mapping": "A generic context-wide regex can attach a value from an earlier same-name mention rather than the local evidence span.",
+      "preferred_handling": "For value_parse, prefer the nearest local same-label value around the linker span. If the local mention has no concrete value, demote to review_candidate or context_only instead of emitting a strict numeric target."
+    },
+    {
+      "span": "approximate vitals",
+      "observed_bad_or_ambiguous_mapping": "Clinical notes often write approximate values such as HR increased to the 160s or O2 sat 50-60%.",
+      "preferred_handling": "Preserve range/approximate text as numeric_value and value_text when locally attached to the lab/vital span; do not normalize away the uncertainty marker."
+    },
+    {
+      "span": "CT",
+      "observed_bad_or_ambiguous_mapping": "Geography or generic abbreviation risk",
+      "preferred_handling": "Allow only longer imaging spans such as head CT, CTA, CT abdomen, CT chest, or radiology procedure context."
+    },
+    {
+      "span": "MI",
+      "observed_bad_or_ambiguous_mapping": "Can be myocardial infarction or nonclinical abbreviation",
+      "preferred_handling": "Require cardiology context and disease-like concept; otherwise review."
+    },
+    {
+      "span": "EF/LVEF",
+      "observed_bad_or_ambiguous_mapping": "Can map to non-ejection-fraction concepts or modifiers",
+      "preferred_handling": "Value-parse only with percentage context."
+    },
+    {
+      "span": "IV/PO/NG/PRN",
+      "observed_bad_or_ambiguous_mapping": "Routes, not target medical problems",
+      "preferred_handling": "Use as medication administration context only."
+    },
+    {
+      "span": "FHx",
+      "observed_bad_or_ambiguous_mapping": "Family-history cue, not target disease",
+      "preferred_handling": "Use only to set experiencer/context for nearby disease concepts."
+    }
+  ],
+  "section_policy": {
+    "family_history_sections": [
+      "family history",
+      "fhx"
+    ],
+    "social_history_sections": [
+      "social history",
+      "functional status / home / family assessment"
+    ],
+    "lab_value_sections": [
+      "laboratory data",
+      "labs",
+      "chemistry",
+      "hematology",
+      "blood gas",
+      "vitals",
+      "review of systems"
+    ],
+    "medication_sections": [
+      "medications",
+      "discharge medications",
+      "medications on admission",
+      "pharmacy"
+    ],
+    "admin_sections": [
+      "admission date",
+      "discharge date",
+      "unit no",
+      "dictated by",
+      "completed by",
+      "signed electronically"
+    ],
+    "policy": "Use section as evidence for context and routing, never as the only reason to assert present/absent."
+  },
+  "note_category_policy": {
+    "Discharge summary": "Keep high-confidence diagnoses, symptoms, procedures, meds, devices, and parsed labs; review history/negation-heavy sentences.",
+    "Physician": "Keep high-confidence clinical concepts; lab/vitals require value_parse; reject unit/route/admin spans.",
+    "Consult": "Keep high-confidence clinical concepts; lab/vitals require value_parse; tighten negation scope.",
+    "ECG": "Keep/review ECG-specific findings such as sinus rhythm, atrial fibrillation, ST/T-wave findings, bradycardia/tachycardia, block, and myocardial infarction. Context-only for previous/prior/change/possible unless attached to a finding.",
+    "Echo": "Do not treat normal/mild/size/wall/function/ventricular/aortic valve as independent targets. Use them as attributes around valve/chamber/function findings; value_parse LVEF/EF with percentage.",
+    "Radiology": "Reject report headers and admin spans such as reason/final report/examination/study/year. Review anatomy/procedure/findings; keep specific abnormalities only with clinical phrase context.",
+    "Pharmacy": "Keep medication/sedation/substance concepts; route/dose/admin words are context_only or reject.",
+    "Nutrition": "Labs, weights, vitals, diet/TPN/tube feeding require value/status parsing; reject standalone units.",
+    "Respiratory": "Keep airway, ventilation, lung sound, secretion, and respiratory support concepts when specific; reject assessment/plan/day/size/current.",
+    "Nursing": "Keep specific symptoms/devices/procedures/meds; reject action/assessment/plan/shift/admin spans; value_parse vitals.",
+    "Nursing/other": "Same as Nursing; neonatal/infant context should be preserved if present.",
+    "Rehab Services": "Treat PT/OT/ADL/mobility as functional/context candidates; do not confuse PT with prothrombin time.",
+    "Case Management": "Mostly social/admin. Keep social determinants such as smoker, lives with family, homelessness, occupation only when explicit; person roles are context_only.",
+    "Social Work": "Mostly social/family/admin. Keep social determinants and family-history disease context; person names/roles/contact fields are context_only or reject.",
+    "General": "Use standard clinical rules; reject generic admin/action spans."
+  },
+  "lab_value_policy": {
+    "action": "value_parse",
+    "principle": "Lab/vital mentions are measurements or observations. Do not assign ordinary present/absent assertion from generic negation scope.",
+    "required_output_fields": [
+      "value_status",
+      "numeric_value",
+      "unit",
+      "value_text",
+      "value_parse_method"
+    ],
+    "numeric_value_policy": "Extract nearby numeric value, comparator, range, and unit when present. The value must align to the same local mention as the evidence span; repeated table rows or repeated same-name labs must not borrow values from earlier mentions. If no local concrete value is present, emit review_candidate/context_only rather than a final assertion pair.",
+    "value_status_policy": "Use explicit terms high/low/elevated/decreased/normal/abnormal/positive/negative when present. Do not infer normality from reference ranges until a structured range source is added.",
+    "recommended_sources": [
+      "MIMIC structured LABEVENTS and D_LABITEMS for numeric value grounding in later stages",
+      "note-local regex only for nearby lab/vital patterns such as Hgb 7.1, Hct 41, WBC 20, BP 128/57, HR 75, pCO2 54"
+    ]
+  },
+  "assertion_policy": {
+    "allowed_preview_labels": [
+      "present",
+      "absent",
+      "possible",
+      "conditional",
+      "hypothetical",
+      "historical",
+      "not_applicable"
+    ],
+    "experiencer_preview_labels": [
+      "patient",
+      "family",
+      "other",
+      "unknown"
+    ],
+    "temporality_preview_labels": [
+      "current",
+      "historical",
+      "future_or_hypothetical",
+      "unknown"
+    ],
+    "preview_only": true,
+    "family_history_policy": "Family history concepts must be experiencer=family and should not conflict with patient-current disease assertions. Family contact words such as husband/daughter/mother in case-management text are context roles unless the section/text states family history or a relative's disease history.",
+    "scope_warning": "Negation, possible, hypothetical, and historical cues must be scoped tightly to the concept sentence/clause; this filter only creates a preview, not final labels."
+  },
+  "training_policy": {
+    "input_must_include": [
+      "note snippet",
+      "note category",
+      "section name",
+      "linker candidates with span, concept_id, concept_id_system, canonical_name, type_ids, score_bin, score",
+      "schema",
+      "candidate-level action and warning flags",
+      "parsed value fields for lab/vital candidates"
+    ],
+    "target_must_include": [
+      "selected concept_id or mapped UMLS CUI",
+      "canonical_name",
+      "span",
+      "concept_category",
+      "assertion_status",
+      "experiencer",
+      "temporality",
+      "value_status",
+      "numeric_value",
+      "unit",
+      "section",
+      "evidence",
+      "linker_name",
+      "linker_score",
+      "confidence",
+      "needs_review"
+    ],
+    "do_not_train_on": [
+      "unsupported linker candidates",
+      "generic administrative terms",
+      "ambiguous abbreviations without disambiguating context",
+      "lab/vital mentions without parsed value/status when a value target is required",
+      "person-role-only concepts as disease-style targets",
+      "standalone units/routes/modifiers"
+    ]
+  },
+  "audit_driven_tightening": {
+    "2026-05-14-v2.4.11": {
+      "source": "<PRIVATE_AUDIT_SUMMARY_JSON>",
+      "purpose": "Tighten automatic target acceptance after LLM/manual audit of 170 v2.4.10 gold-sample records.",
+      "main_changes": [
+        "Do not auto-accept generic headings/modifiers as strict target pairs.",
+        "Treat calcium and similar analytes in medication sections as doses/supplements, not lab values.",
+        "Downshift echo/anatomy attributes and exam locations unless they are specific findings.",
+        "Avoid forcing experiencer=family for mixed SOCIAL and FAMILY HISTORY sections without relative disease context.",
+        "Use a longer bounded context window so rehab/vital tables preserve nearby values."
+      ]
+    },
+    "2026-05-14-v2.4.12": {
+      "source": "<PRIVATE_SMOKE_CHECK_JSONL>",
+      "purpose": "Small follow-up patch after v2.4.11 smoke checks.",
+      "main_changes": [
+        "Parse rehab HR/BP/SpO2 table rows where RR is omitted.",
+        "Downshift oral-motor phrases such as does not suck but bites down away from Bite-wound targets."
+      ]
+    }
+  }
+}
