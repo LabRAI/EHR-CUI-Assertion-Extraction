@@ -3,7 +3,7 @@
 The recommended deployment entry point is:
 
 ```bash
-python scripts/run_extraction_auto.py
+python3 scripts/run_extraction_auto.py
 ```
 
 It expects private note shards plus a licensed MedCAT modelpack. The runner:
@@ -20,7 +20,7 @@ It expects private note shards plus a licensed MedCAT modelpack. The runner:
 ## Minimal SLURM Run
 
 ```bash
-python scripts/run_extraction_auto.py \
+python3 scripts/run_extraction_auto.py \
   --notes-jsonl-gz /private/note_shards/notes_shard_000000.jsonl.gz \
   --modelpack /private/models/medcat_modelpack.zip \
   --filter-policy configs/linker_filter_policy.local.json \
@@ -31,13 +31,13 @@ python scripts/run_extraction_auto.py \
 By default, the runner uses all CPU cores assigned by SLURM. To cap usage:
 
 ```bash
-python scripts/run_extraction_auto.py ... --workers 4
+python3 scripts/run_extraction_auto.py ... --workers 4
 ```
 
 For many shards, pass `--notes-jsonl-gz` multiple times:
 
 ```bash
-python scripts/run_extraction_auto.py \
+python3 scripts/run_extraction_auto.py \
   --notes-jsonl-gz /private/note_shards/notes_shard_000000.jsonl.gz \
   --notes-jsonl-gz /private/note_shards/notes_shard_000001.jsonl.gz \
   --modelpack /private/models/medcat_modelpack.zip \

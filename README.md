@@ -15,6 +15,21 @@ This repository contains code only. It does not include MIMIC notes, UMLS
 terminology files, MedCAT modelpacks, generated candidate files, logs, or any
 patient text.
 
+## For Collaborators
+
+If you are using this package to run extraction at another site, start with
+[`docs/genie_handoff.md`](docs/genie_handoff.md). It gives the shortest complete
+path from a fresh clone to a local smoke test and then to a private extraction
+run.
+
+The repository is designed so each site keeps its own restricted assets outside
+git:
+
+- local clinical note shards;
+- a licensed MedCAT modelpack;
+- licensed UMLS files if UMLS CUI normalization is needed;
+- private output and log directories.
+
 ## Why This Exists
 
 The downstream EHR generator is trained on structured clinical events rather
@@ -37,6 +52,7 @@ configs/
   extraction_schema.json                 # final pair schema
   linker_filter_policy.example.json      # sanitized schema-aware filter policy
 docs/
+  genie_handoff.md                       # external collaborator run guide
   data_and_license.md                    # restricted-data handling notes
   pipeline.md                            # stage-by-stage extraction workflow
 examples/
@@ -72,7 +88,7 @@ they are synthetic and manually verified to contain no patient text.
 Create an environment:
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -86,11 +102,25 @@ Copy the policy template and fill in local paths outside git:
 cp configs/linker_filter_policy.example.json configs/linker_filter_policy.local.json
 ```
 
+Check the wrapper without loading restricted data:
+
+```bash
+python3 scripts/run_extraction_auto.py \
+  --notes-jsonl-gz examples/toy_notes.jsonl \
+  --modelpack /tmp/not_loaded_in_dry_run.zip \
+  --filter-policy configs/linker_filter_policy.example.json \
+  --output-root /tmp/ehr_extraction_smoke \
+  --variant-name toy_dry_run \
+  --workers 2 \
+  --allow-no-slurm \
+  --dry-run
+```
+
 Run the deployment-friendly extractor. It automatically detects CPU cores from
 SLURM and uses the optimized prefork/batched linker path:
 
 ```bash
-python scripts/run_extraction_auto.py \
+python3 scripts/run_extraction_auto.py \
   --notes-jsonl-gz /path/to/private/note_shards/notes_shard_000000.jsonl.gz \
   --modelpack /path/to/licensed/medcat_modelpack.zip \
   --filter-policy configs/linker_filter_policy.local.json \
@@ -101,7 +131,7 @@ python scripts/run_extraction_auto.py \
 Shard notes through a SLURM job:
 
 ```bash
-python scripts/shard_mimic_notes.py \
+python3 scripts/shard_mimic_notes.py \
   --zip /path/to/restricted/mimic.zip \
   --output-dir /path/to/private/note_shards \
   --notes-per-shard 5000
@@ -110,7 +140,7 @@ python scripts/shard_mimic_notes.py \
 Extract linker candidates from a shard:
 
 ```bash
-python scripts/extract_medcat_candidates.py \
+python3 scripts/extract_medcat_candidates.py \
   --notes-jsonl-gz /path/to/private/note_shards/notes_shard_000000.jsonl.gz \
   --modelpack /path/to/licensed/medcat_modelpack.zip \
   --filter-policy configs/linker_filter_policy.local.json \
@@ -129,7 +159,7 @@ for debugging and controlled ablations.
 Build a SNOMED-to-UMLS crosswalk from licensed UMLS files:
 
 ```bash
-python scripts/build_snomed_umls_crosswalk.py \
+python3 scripts/build_snomed_umls_crosswalk.py \
   --mrconso /path/to/UMLS/META/MRCONSO.RRF.gz \
   --candidate-jsonl /path/to/private/extraction/shard_000000/medcat_candidates.jsonl.gz \
   --output-dir /path/to/private/umls_crosswalk
@@ -138,13 +168,13 @@ python scripts/build_snomed_umls_crosswalk.py \
 Annotate candidates and create strict pair splits:
 
 ```bash
-python scripts/annotate_snomed_umls_candidates.py \
+python3 scripts/annotate_snomed_umls_candidates.py \
   --crosswalk-jsonl /path/to/private/umls_crosswalk/snomed_umls_crosswalk.jsonl.gz \
   --candidate-jsonl /path/to/private/extraction/shard_000000/medcat_candidates.jsonl.gz \
   --output-jsonl /path/to/private/annotated/shard_000000/medcat_candidates_with_umls.jsonl.gz \
   --summary-json /path/to/private/annotated/shard_000000/summary.json
 
-python scripts/build_full_shard_strict_pair_splits.py \
+python3 scripts/build_full_shard_strict_pair_splits.py \
   --input-root /path/to/private/annotated \
   --output-dir /path/to/private/pair_splits \
   --release-name strict_pairs_v1

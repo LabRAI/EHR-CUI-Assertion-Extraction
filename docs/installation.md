@@ -9,7 +9,7 @@ data, UMLS terminology, SNOMED CT releases, or MedCAT modelpacks.
 git clone https://github.com/LabRAI/EHR-CUI-Assertion-Extraction.git
 cd EHR-CUI-Assertion-Extraction
 
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -42,7 +42,7 @@ Required external dependencies:
 You can verify argument parsing and auto CPU detection on synthetic notes:
 
 ```bash
-python scripts/run_extraction_auto.py \
+python3 scripts/run_extraction_auto.py \
   --notes-jsonl-gz examples/toy_notes.jsonl \
   --modelpack /tmp/not_loaded_in_dry_run.zip \
   --filter-policy configs/linker_filter_policy.example.json \
@@ -54,4 +54,3 @@ python scripts/run_extraction_auto.py \
 ```
 
 This writes a config and run manifest but does not load MedCAT.
-
