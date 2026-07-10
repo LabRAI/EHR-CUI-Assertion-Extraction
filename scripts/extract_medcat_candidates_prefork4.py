@@ -254,8 +254,8 @@ def process_task(task_id: str) -> dict[str, Any]:
                     reasons = sorted(set([*reasons, *override_reasons]))
 
                 concept_category = base.infer_concept_category(source_value, pretty_name, type_ids, flags)
-                assertion_preview = base.infer_assertion_preview(sentence, section, action)
-                temporality_preview = base.infer_temporality_preview(sentence, section)
+                assertion_preview = base.infer_assertion_preview(sentence, section, action, source_value)
+                temporality_preview = base.infer_temporality_preview(sentence, section, source_value)
                 experiencer_preview = base.infer_experiencer_preview(sentence, section, flags)
                 anatomy_cue = base.infer_context_cue(evidence_context, base.ANATOMY_CUE_PATTERNS)
                 modifier_cue = base.infer_context_cue(evidence_context, base.MODIFIER_CUE_PATTERNS)

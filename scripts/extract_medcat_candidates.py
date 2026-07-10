@@ -32,34 +32,73 @@ KNOWN_SECTION_HEADERS = {
     "assessment",
     "balance",
     "brief hospital course",
+    "case presentation",
+    "case report",
     "chief complaint",
+    "clinical presentation",
     "discharge diagnosis",
     "discharge medications",
+    "diagnostic assessment",
+    "differential diagnosis",
     "family history",
     "functional status / home / family assessment",
+    "follow-up",
+    "follow up",
     "history of present illness",
     "imaging",
+    "investigations",
     "laboratory data",
     "labs",
     "medications",
     "medications on admission",
     "narrative / plan",
+    "outcome",
+    "outcome and follow-up",
+    "patient information",
     "past medical history",
     "past surgical history",
     "physical exam",
+    "presentation",
     "review of systems",
     "social history",
     "status",
+    "therapeutic intervention",
+    "timeline",
+    "treatment",
     "vitals",
 }
 NUMERIC_CONTEXT = re.compile(
     r"(?i)(?:<=|>=|<|>)?\s*\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?(?:\(\d+\))?)?"
     r"\s*(?:%|mg/dl|mmol/l|meq/l|k/u?l|x10\^?3|g/dl|sec|s|bpm|mmhg|mm hg|cmh2o|iu|u/l|ng/ml|mcg/ml|mg/hr|insp/min)?"
 )
-NEGATION_CUE = re.compile(r"\b(no|not|denies|denied|without|negative for|free of|ruled out|no evidence of|absent)\b", re.I)
-POSSIBLE_CUE = re.compile(r"\b(possible|possibly|probable|suspected|concern for|question of|rule out|r/o|cannot rule out|may have|vs\.?|versus)\b", re.I)
-HYPOTHETICAL_CUE = re.compile(r"\b(if|should|would|consider|monitor for|watch for|plan to|return for)\b", re.I)
-HISTORICAL_CUE = re.compile(r"\b(history of|h/o|hx of|past medical history|past surgical history|pmh|pmhx|previous|prior|status post|s/p)\b", re.I)
+NEGATION_CUE = re.compile(
+    r"\b(no|not|none|neither|nor|denies|denied|without|w/o|negative for|negative|"
+    r"free of|ruled out|no evidence of|no signs? of|absen(?:t|ce)|lack of|"
+    r"did not (?:show|reveal|demonstrate)|does not (?:show|reveal|demonstrate)|"
+    r"failed to (?:show|reveal|demonstrate)|unremarkable for|normal)\b",
+    re.I,
+)
+POSSIBLE_CUE = re.compile(
+    r"\b(possible|possibly|probable|probably|suspected|suspicious for|concern for|"
+    r"concerning for|question of|rule out|r/o|cannot rule out|cannot exclude|"
+    r"cannot be excluded|may have|may represent|may reflect|might represent|"
+    r"could represent|could reflect|suggestive of|compatible with|consistent with|"
+    r"vs\.?|versus)\b",
+    re.I,
+)
+CONDITIONAL_CUE = re.compile(
+    r"\b(if|unless|when|whenever|provided that|in case of|prn|as needed|"
+    r"if needed|if necessary|hold if|call if|return if|use as needed|"
+    r"take as needed)\b",
+    re.I,
+)
+HYPOTHETICAL_CUE = re.compile(r"\b(should|would|consider|monitor for|watch for|plan to|return for)\b", re.I)
+HISTORICAL_CUE = re.compile(
+    r"\b(history of|h/o|hx of|past medical history|past surgical history|pmh|pmhx|"
+    r"previous|previously|prior|remote|former|status post|s/p|underwent|"
+    r"was diagnosed|were diagnosed|had been diagnosed)\b",
+    re.I,
+)
 FAMILY_CUE = re.compile(r"\b(family history|fhx|mother|father|sister|brother|daughter|son|parent|maternal|paternal|aunt|uncle|wife|husband)\b", re.I)
 SOCIAL_CUE = re.compile(r"\b(social history|smok(?:e|er|ing)|tobacco|alcohol|ethanol|drug use|lives with|homeless|occupation|job|married)\b", re.I)
 
@@ -601,26 +640,108 @@ def infer_concept_category(span: str, pretty_name: str, type_ids: list[str], fla
     return "other"
 
 
-def infer_assertion_preview(sentence: str, section: str, action: str) -> str:
+def scoped_span_pattern(span: str) -> str:
+    span_key = clean(span)
+    if not span_key:
+        return ""
+    return rf"\b{re.escape(span_key)}\b"
+
+
+def has_scoped_conditional(text: str, span: str) -> bool:
+    target = scoped_span_pattern(span)
+    if not target:
+        return bool(CONDITIONAL_CUE.search(text))
+    return bool(
+        re.search(rf"\b(if|unless|when|whenever|provided that|in case of|return if|call if)\b[^.;:]{{0,140}}{target}", text, re.I)
+        or re.search(rf"\b(prn|as needed|if needed|if necessary|use as needed|take as needed)\b[^.;:]{{0,100}}{target}", text, re.I)
+        or re.search(rf"{target}[^.;:]{{0,100}}\b(prn|as needed|if needed|if necessary|if confirmed|if culture is positive)\b", text, re.I)
+    )
+
+
+def has_scoped_negation(text: str, span: str) -> bool:
+    target = scoped_span_pattern(span)
+    if not target:
+        return bool(NEGATION_CUE.search(text))
+    return bool(
+        re.search(
+            rf"\b(no|none|neither|nor|without|w/o|denies|denied|negative for|"
+            rf"no evidence of|no signs? of|absen(?:t|ce) of|lack of|free of)\b[^.;:]{{0,140}}{target}",
+            text,
+            re.I,
+        )
+        or re.search(rf"\b(did not|does not|failed to)\s+(?:show|reveal|demonstrate)[^.;:]{{0,140}}{target}", text, re.I)
+        or re.search(rf"{target}[^.;:]{{0,80}}\b(absent|negative|not seen|not present|ruled out|excluded)\b", text, re.I)
+        or re.search(rf"\bnormal\b[^.;:]{{0,60}}{target}", text, re.I)
+        or re.search(rf"{target}[^.;:]{{0,60}}\bnormal\b", text, re.I)
+    )
+
+
+def has_scoped_possible(text: str, span: str) -> bool:
+    target = scoped_span_pattern(span)
+    if not target:
+        return bool(POSSIBLE_CUE.search(text))
+    return bool(
+        re.search(
+            rf"\b(possible|possibly|probable|probably|suspected|suspicious for|concern(?:ing)? for|"
+            rf"question of|rule out|r/o|cannot rule out|cannot exclude|cannot be excluded|"
+            rf"may have|may represent|may reflect|might represent|could represent|could reflect|"
+            rf"suggestive of|compatible with|consistent with)\b[^.;:]{{0,140}}{target}",
+            text,
+            re.I,
+        )
+        or re.search(rf"{target}[^.;:]{{0,140}}\b(possible|possibly|probable|suspected|cannot be excluded|cannot exclude|vs\.?|versus)\b", text, re.I)
+        or re.search(rf"\bdifferential includes\b[^.;:]{{0,140}}{target}", text, re.I)
+    )
+
+
+def has_scoped_hypothetical(text: str, span: str) -> bool:
+    target = scoped_span_pattern(span)
+    if not target:
+        return bool(HYPOTHETICAL_CUE.search(text))
+    return bool(
+        re.search(rf"\b(should|would|consider|monitor for|watch for|plan to|evaluate for)\b[^.;:]{{0,140}}{target}", text, re.I)
+        or re.search(rf"{target}[^.;:]{{0,100}}\b(should|would|consider|monitor|watch|plan)\b", text, re.I)
+    )
+
+
+def has_scoped_historical(text: str, span: str) -> bool:
+    target = scoped_span_pattern(span)
+    if not target:
+        return bool(HISTORICAL_CUE.search(text))
+    return bool(
+        re.search(
+            rf"\b(history of|h/o|hx of|past medical history|past surgical history|pmh|pmhx|"
+            rf"previous|previously|prior|remote|former|status post|s/p|underwent|"
+            rf"was diagnosed|were diagnosed|had been diagnosed)\b[^.;:]{{0,160}}{target}",
+            text,
+            re.I,
+        )
+        or re.search(rf"{target}[^.;:]{{0,100}}\b(history|prior|previous|remote|status post|s/p|treated with surgery)\b", text, re.I)
+    )
+
+
+def infer_assertion_preview(sentence: str, section: str, action: str, span: str = "") -> str:
     if action == "value_parse":
         return "not_applicable"
     text = f"{section} {sentence}"
-    if NEGATION_CUE.search(sentence):
+    if has_scoped_conditional(sentence, span):
+        return "conditional"
+    if has_scoped_negation(sentence, span):
         return "absent"
-    if POSSIBLE_CUE.search(sentence):
+    if has_scoped_possible(sentence, span):
         return "possible"
-    if HYPOTHETICAL_CUE.search(sentence):
+    if has_scoped_hypothetical(sentence, span):
         return "hypothetical"
-    if HISTORICAL_CUE.search(text):
+    if has_scoped_historical(text, span):
         return "historical"
     return "present"
 
 
-def infer_temporality_preview(sentence: str, section: str) -> str:
+def infer_temporality_preview(sentence: str, section: str, span: str = "") -> str:
     text = f"{section} {sentence}"
-    if HYPOTHETICAL_CUE.search(text):
+    if has_scoped_conditional(text, span) or has_scoped_hypothetical(text, span):
         return "future_or_hypothetical"
-    if HISTORICAL_CUE.search(text):
+    if has_scoped_historical(text, span):
         return "historical"
     return "current"
 
@@ -1560,6 +1681,8 @@ def filter_flags(
         flags.add("negation_cue_context")
     if POSSIBLE_CUE.search(sentence):
         flags.add("possible_cue_context")
+    if CONDITIONAL_CUE.search(sentence):
+        flags.add("conditional_cue_context")
     if HYPOTHETICAL_CUE.search(sentence):
         flags.add("hypothetical_cue_context")
     if HISTORICAL_CUE.search(f"{section} {sentence}"):
@@ -2075,8 +2198,8 @@ def main() -> int:
                     reasons = sorted(set([*reasons, *override_reasons]))
 
                 concept_category = infer_concept_category(source_value, pretty_name, type_ids, flags)
-                assertion_preview = infer_assertion_preview(sentence, section, action)
-                temporality_preview = infer_temporality_preview(sentence, section)
+                assertion_preview = infer_assertion_preview(sentence, section, action, source_value)
+                temporality_preview = infer_temporality_preview(sentence, section, source_value)
                 experiencer_preview = infer_experiencer_preview(sentence, section, flags)
                 anatomy_cue = infer_context_cue(evidence_context, ANATOMY_CUE_PATTERNS)
                 modifier_cue = infer_context_cue(evidence_context, MODIFIER_CUE_PATTERNS)
