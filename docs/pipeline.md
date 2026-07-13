@@ -37,7 +37,27 @@ The optimized benchmark path,
 process and forks CPU workers. This reduces repeated model loading while keeping
 the same candidate logic.
 
-## 3. Normalize To UMLS CUI
+## 3. Optional Ontology Overlay
+
+`scripts/add_medcat_cdb_ontology_overlay.py` can add a strict disease anchor
+overlay from the licensed MedCAT CDB. It builds an exact-match dictionary from
+MedCAT/SNOMED disease concepts (`type_id=9090192`) and uses longest-match
+replacement for overlapping disease anchors.
+
+This stage is intentionally conservative:
+
+- multi-word disease terms are allowed;
+- uppercase abbreviations are allowed;
+- broad single-word terms such as anatomy, substances, and context words are
+  filtered;
+- existing non-disease candidates are left unchanged.
+
+Use this when public or site-local validation shows that entity coverage is the
+main bottleneck. The output has the same candidate JSONL shape as the MedCAT
+candidate stage, so downstream UMLS normalization and strict pair construction
+can consume either the original or overlay view.
+
+## 4. Normalize To UMLS CUI
 
 Some MedCAT modelpacks return SNOMED IDs. When UMLS CUI output is required:
 
@@ -46,7 +66,7 @@ Some MedCAT modelpacks return SNOMED IDs. When UMLS CUI output is required:
 2. `scripts/annotate_snomed_umls_candidates.py` adds preferred UMLS CUI and
    mapping-status fields to each candidate record.
 
-## 4. Create Strict Pair Splits
+## 5. Create Strict Pair Splits
 
 `scripts/build_full_shard_strict_pair_splits.py` streams annotated candidates,
 applies `strict_decision`, and writes train/dev/test splits by subject hash.
@@ -74,7 +94,7 @@ Pair shape:
 }
 ```
 
-## 5. Validate And Benchmark
+## 6. Validate And Benchmark
 
 Use the validation and summary utilities to check:
 
@@ -87,4 +107,3 @@ Use the validation and summary utilities to check:
 `scripts/build_extraction_scaling_benchmark.py` creates portable SLURM configs
 and job scripts. `scripts/summarize_extraction_scaling_benchmark.py` turns
 completed runs into CSV, JSON, Markdown, and an optional runtime curve.
-

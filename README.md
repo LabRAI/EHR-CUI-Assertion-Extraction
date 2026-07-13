@@ -7,6 +7,7 @@ concept/assertion records:
 MIMIC-style notes
   -> MedCAT span-level entity linking
   -> schema-aware candidate filtering
+  -> optional MedCAT-CDB ontology overlay
   -> SNOMED/UMLS normalization
   -> strict CUI-assertion pairs
 ```
@@ -62,6 +63,7 @@ scripts/
   shard_mimic_notes.py                   # local restricted-note sharding
   extract_medcat_candidates.py           # standard MedCAT + schema filter
   extract_medcat_candidates_prefork4.py  # optimized prefork benchmark extractor
+  add_medcat_cdb_ontology_overlay.py     # optional strict disease coverage overlay
   build_snomed_umls_crosswalk.py         # licensed UMLS crosswalk builder
   annotate_snomed_umls_candidates.py     # add UMLS CUI mapping to candidates
   build_full_shard_strict_pair_splits.py # strict pair split builder
@@ -152,6 +154,19 @@ python3 scripts/extract_medcat_candidates.py \
   --compress-output
 ```
 
+Optionally add a strict disease ontology overlay from the licensed MedCAT CDB.
+This can recover exact disease anchors missed by contextual linking while
+keeping broad single-word terms filtered out:
+
+```bash
+python3 scripts/add_medcat_cdb_ontology_overlay.py \
+  --cdb-path /path/to/licensed/medcat_modelpack/cdb \
+  --notes-jsonl-gz /path/to/private/note_shards/notes_shard_000000.jsonl.gz \
+  --candidate-jsonl /path/to/private/extraction/shard_000000 \
+  --output-dir /path/to/private/extraction_overlay/shard_000000 \
+  --summary-json /path/to/private/extraction_overlay/ontology_overlay_summary.json
+```
+
 For deployable CPU auto-detection and parallel task splitting, prefer
 `scripts/run_extraction_auto.py`; the lower-level extractor remains available
 for debugging and controlled ablations.
@@ -203,6 +218,9 @@ runs the prefork MedCAT extractor, and records a run manifest. See
 ## Notes
 
 - The code treats MedCAT as a candidate linker, not as the final labeler.
+- The optional ontology overlay uses the licensed MedCAT CDB as a conservative
+  exact-match dictionary for disease anchors; it is not a substitute for the
+  schema-aware assertion and strict-pair gates.
 - The strict training view uses UMLS-normalized CUI IDs when a licensed
   SNOMED/UMLS crosswalk is available.
 - Numeric lab/vital mentions are routed through value parsing instead of being
