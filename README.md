@@ -158,7 +158,9 @@ python3 scripts/extract_medcat_candidates.py \
 
 Optionally add a strict disease ontology overlay from the licensed MedCAT CDB.
 This can recover exact disease anchors missed by contextual linking while
-keeping broad single-word terms filtered out:
+keeping broad single-word terms filtered out. For clinical notes, prefer
+`--overlap-mode add_missing` so existing MedCAT rows keep their local assertion
+and context fields:
 
 ```bash
 python3 scripts/add_medcat_cdb_ontology_overlay.py \
@@ -166,6 +168,7 @@ python3 scripts/add_medcat_cdb_ontology_overlay.py \
   --notes-jsonl-gz /path/to/private/note_shards/notes_shard_000000.jsonl.gz \
   --candidate-jsonl /path/to/private/extraction/shard_000000 \
   --output-dir /path/to/private/extraction_overlay/shard_000000 \
+  --overlap-mode add_missing \
   --summary-json /path/to/private/extraction_overlay/ontology_overlay_summary.json
 ```
 

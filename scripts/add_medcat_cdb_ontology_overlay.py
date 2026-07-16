@@ -205,6 +205,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-words", type=int, default=8)
     parser.add_argument("--dump-lexicon-sample-json", default="")
     parser.add_argument("--allow-broad-single-word", action="store_true", help="Disable strict single-word filtering; usually not recommended")
+    parser.add_argument(
+        "--overlap-mode",
+        choices=["replace", "add_missing"],
+        default="replace",
+        help=(
+            "replace drops overlapping disease linker rows and writes ontology rows; "
+            "add_missing preserves overlapping disease linker rows and only adds non-overlapping ontology rows"
+        ),
+    )
     parser.add_argument("--allow-no-slurm", action="store_true", help="Developer escape hatch for tiny synthetic tests")
     return parser.parse_args()
 
@@ -449,7 +458,15 @@ def make_ontology_row(match: dict[str, Any], note_id: str, note: dict[str, str])
     }
 
 
-def process_one(name: str, notes_path: Path, candidate_path: Path, output_dir: Path, lexicon: dict[str, TermEntry], max_words: int) -> dict[str, Any]:
+def process_one(
+    name: str,
+    notes_path: Path,
+    candidate_path: Path,
+    output_dir: Path,
+    lexicon: dict[str, TermEntry],
+    max_words: int,
+    overlap_mode: str,
+) -> dict[str, Any]:
     mkdir_private(output_dir)
     out_path = output_dir / "medcat_candidates.jsonl.gz"
     notes = load_notes(notes_path)
@@ -460,21 +477,34 @@ def process_one(name: str, notes_path: Path, candidate_path: Path, output_dir: P
 
     added = 0
     dropped_overlap = 0
+    skipped_overlap = 0
     match_counts = Counter()
     with open_output(out_path) as out_fh:
         for note_id, note in notes.items():
             matches = find_ontology_matches(note.get("text") or "", lexicon, max_words=max_words)
+            overlapping_match_indexes: set[int] = set()
             for row in base_by_note.get(note_id, []):
                 if row.get("concept_category_preview") == "disease_or_diagnosis":
                     try:
                         ps, pe = int(row.get("span_start")), int(row.get("span_end"))
                     except (TypeError, ValueError):
                         ps, pe = -1, -1
-                    if any(overlaps(ps, pe, int(m["span_start"]), int(m["span_end"])) for m in matches):
-                        dropped_overlap += 1
+                    for match_i, match in enumerate(matches):
+                        if overlaps(ps, pe, int(match["span_start"]), int(match["span_end"])):
+                            overlapping_match_indexes.add(match_i)
+                            if overlap_mode == "replace":
+                                dropped_overlap += 1
+                                break
+                    else:
+                        out_fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+                        continue
+                    if overlap_mode == "replace":
                         continue
                 out_fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-            for match in matches:
+            for match_i, match in enumerate(matches):
+                if overlap_mode == "add_missing" and match_i in overlapping_match_indexes:
+                    skipped_overlap += 1
+                    continue
                 out_fh.write(json.dumps(make_ontology_row(match, note_id, note), ensure_ascii=False) + "\n")
                 added += 1
                 match_counts[match["entry"].norm] += 1
@@ -492,8 +522,10 @@ def process_one(name: str, notes_path: Path, candidate_path: Path, output_dir: P
         "output": str(out_path),
         "notes_loaded": len(notes),
         "base_rows": len(base_rows),
+        "overlap_mode": overlap_mode,
         "ontology_rows_added": added,
         "overlapping_disease_rows_dropped": dropped_overlap,
+        "ontology_rows_skipped_overlap": skipped_overlap,
         "top_ontology_terms": match_counts.most_common(30),
     }
     stats_path = output_dir / "medcat_cdb_ontology_overlay_stats.json"
@@ -516,7 +548,17 @@ def main() -> int:
     outputs = []
     for i, (notes_path, candidate_path, output_dir) in enumerate(zip(args.notes_jsonl_gz, args.candidate_jsonl, args.output_dir)):
         name = args.name[i] if i < len(args.name) else Path(output_dir).name
-        outputs.append(process_one(name, Path(notes_path), Path(candidate_path), Path(output_dir), lexicon, args.max_words))
+        outputs.append(
+            process_one(
+                name,
+                Path(notes_path),
+                Path(candidate_path),
+                Path(output_dir),
+                lexicon,
+                args.max_words,
+                args.overlap_mode,
+            )
+        )
 
     summary = {
         "cdb_path": args.cdb_path,

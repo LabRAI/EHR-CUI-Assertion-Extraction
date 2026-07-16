@@ -42,7 +42,17 @@ the same candidate logic.
 `scripts/add_medcat_cdb_ontology_overlay.py` can add a strict disease anchor
 overlay from the licensed MedCAT CDB. It builds an exact-match dictionary from
 MedCAT/SNOMED disease concepts (`type_id=9090192`) and uses longest-match
-replacement for overlapping disease anchors.
+matching against note text.
+
+Two overlap modes are available:
+
+- `replace`: drops overlapping disease linker rows and writes ontology rows.
+  This is useful for public span benchmarks where boundary coverage is the
+  evaluation target.
+- `add_missing`: preserves overlapping disease linker rows and only adds
+  ontology rows when no disease linker row overlaps. This is the safer clinical
+  note mode because it preserves assertion, family/social, historical, and
+  value-context fields from the original linker candidate.
 
 This stage is intentionally conservative:
 
