@@ -57,7 +57,22 @@ main bottleneck. The output has the same candidate JSONL shape as the MedCAT
 candidate stage, so downstream UMLS normalization and strict pair construction
 can consume either the original or overlay view.
 
-## 4. Normalize To UMLS CUI
+## 4. Optional Candidate Specificity Gate
+
+`scripts/apply_candidate_specificity_gate.py` can demote broad disease anchors
+before strict pair construction. It is designed for candidates that may be valid
+clinical context but are poor strict-pair training events, such as `disease`,
+`disorder`, `brain`, `liver`, and `renal`.
+
+This stage does not change the candidate JSONL schema. It only changes selected
+candidate actions to `reject_candidate` and appends reason/filter flags, so
+downstream normalization and pair construction can consume the filtered view in
+the same way as the original view.
+
+Use this when validation shows that broad disease anchors are inflating false
+positives or adding low-specificity events to the training view.
+
+## 5. Normalize To UMLS CUI
 
 Some MedCAT modelpacks return SNOMED IDs. When UMLS CUI output is required:
 
@@ -66,7 +81,7 @@ Some MedCAT modelpacks return SNOMED IDs. When UMLS CUI output is required:
 2. `scripts/annotate_snomed_umls_candidates.py` adds preferred UMLS CUI and
    mapping-status fields to each candidate record.
 
-## 5. Create Strict Pair Splits
+## 6. Create Strict Pair Splits
 
 `scripts/build_full_shard_strict_pair_splits.py` streams annotated candidates,
 applies `strict_decision`, and writes train/dev/test splits by subject hash.
@@ -94,7 +109,7 @@ Pair shape:
 }
 ```
 
-## 6. Validate And Benchmark
+## 7. Validate And Benchmark
 
 Use the validation and summary utilities to check:
 

@@ -8,6 +8,7 @@ MIMIC-style notes
   -> MedCAT span-level entity linking
   -> schema-aware candidate filtering
   -> optional MedCAT-CDB ontology overlay
+  -> optional candidate specificity gate
   -> SNOMED/UMLS normalization
   -> strict CUI-assertion pairs
 ```
@@ -64,6 +65,7 @@ scripts/
   extract_medcat_candidates.py           # standard MedCAT + schema filter
   extract_medcat_candidates_prefork4.py  # optimized prefork benchmark extractor
   add_medcat_cdb_ontology_overlay.py     # optional strict disease coverage overlay
+  apply_candidate_specificity_gate.py    # optional broad-anchor quality gate
   build_snomed_umls_crosswalk.py         # licensed UMLS crosswalk builder
   annotate_snomed_umls_candidates.py     # add UMLS CUI mapping to candidates
   build_full_shard_strict_pair_splits.py # strict pair split builder
@@ -167,6 +169,18 @@ python3 scripts/add_medcat_cdb_ontology_overlay.py \
   --summary-json /path/to/private/extraction_overlay/ontology_overlay_summary.json
 ```
 
+Optionally apply a broad-anchor specificity gate before strict pair construction.
+This demotes generic disease candidates such as `disease`, `disorder`, `brain`,
+`liver`, and `renal` to `reject_candidate`, while preserving the same candidate
+JSONL schema:
+
+```bash
+python3 scripts/apply_candidate_specificity_gate.py \
+  --candidate-jsonl /path/to/private/extraction_overlay/shard_000000 \
+  --output-dir /path/to/private/extraction_specific/shard_000000 \
+  --summary-json /path/to/private/extraction_specific/specificity_gate_summary.json
+```
+
 For deployable CPU auto-detection and parallel task splitting, prefer
 `scripts/run_extraction_auto.py`; the lower-level extractor remains available
 for debugging and controlled ablations.
@@ -221,6 +235,8 @@ runs the prefork MedCAT extractor, and records a run manifest. See
 - The optional ontology overlay uses the licensed MedCAT CDB as a conservative
   exact-match dictionary for disease anchors; it is not a substitute for the
   schema-aware assertion and strict-pair gates.
+- The optional specificity gate is a final candidate-quality filter for broad
+  disease anchors that are poor strict-pair training events.
 - The strict training view uses UMLS-normalized CUI IDs when a licensed
   SNOMED/UMLS crosswalk is available.
 - Numeric lab/vital mentions are routed through value parsing instead of being
