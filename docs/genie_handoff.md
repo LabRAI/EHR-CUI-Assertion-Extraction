@@ -152,6 +152,23 @@ Check these first:
 - `medcat_candidates.jsonl.gz`: structured candidate records used by the next
   UMLS or strict-pair step.
 
+## Optional Measurement Overlay
+
+If a validation set shows missed value-bearing lab/vital mentions, run the
+measurement overlay before UMLS annotation and strict-pair construction:
+
+```bash
+python3 scripts/add_medcat_measurement_overlay.py \
+  --notes-jsonl-gz /private/note_shards/notes_shard_000000.jsonl.gz \
+  --candidate-jsonl /private/outputs/ehr_extraction/variant_genie_shard000/extraction/shard_000000/medcat_candidates.jsonl.gz \
+  --output-dir /private/outputs/measurement_overlay/shard_000000 \
+  --summary-json /private/outputs/measurement_overlay/shard_000000/summary.json
+```
+
+The overlay preserves the candidate schema and fills `value_status`,
+`numeric_value`, `unit`, `value_text`, and `measurement_context` when a
+conservative local numeric value can be parsed.
+
 ## Optional UMLS Normalization
 
 If your MedCAT modelpack returns SNOMED identifiers and your downstream use
@@ -160,7 +177,7 @@ requires UMLS CUIs, build a local crosswalk from your licensed UMLS release:
 ```bash
 python3 scripts/build_snomed_umls_crosswalk.py \
   --mrconso /private/umls/META/MRCONSO.RRF.gz \
-  --candidate-jsonl /private/outputs/ehr_extraction/variant_genie_shard000/extraction/shard_000000/medcat_candidates.jsonl.gz \
+  --candidate-jsonl /private/outputs/measurement_overlay/shard_000000/medcat_candidates.jsonl.gz \
   --output-dir /private/outputs/umls_crosswalk
 ```
 
@@ -169,7 +186,7 @@ Then annotate candidates:
 ```bash
 python3 scripts/annotate_snomed_umls_candidates.py \
   --crosswalk-jsonl /private/outputs/umls_crosswalk/snomed_umls_crosswalk.jsonl.gz \
-  --candidate-jsonl /private/outputs/ehr_extraction/variant_genie_shard000/extraction/shard_000000/medcat_candidates.jsonl.gz \
+  --candidate-jsonl /private/outputs/measurement_overlay/shard_000000/medcat_candidates.jsonl.gz \
   --output-jsonl /private/outputs/annotated/shard_000000/medcat_candidates_with_umls.jsonl.gz \
   --summary-json /private/outputs/annotated/shard_000000/summary.json
 ```

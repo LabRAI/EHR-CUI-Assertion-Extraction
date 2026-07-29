@@ -175,7 +175,9 @@ def process_task(task_id: str) -> dict[str, Any]:
                     continue
                 raw_id = str(base.entity_field(ent, "cui", "id", default=""))
                 pretty_name = str(base.entity_field(ent, "pretty_name", "source_value", "detected_name", default=""))
-                source_value = str(base.entity_field(ent, "source_value", "detected_name", default=snippet[start:end]))
+                raw_source_value = str(base.entity_field(ent, "source_value", "detected_name", default=snippet[start:end]))
+                source_value = raw_source_value
+                source_value, start, end, normalized_lab_alias = base.normalize_lab_value_span(source_value, start, end)
                 types = base.entity_field(ent, "type_ids", "types", default=[]) or []
                 if isinstance(types, str):
                     types = [types]
@@ -212,6 +214,8 @@ def process_task(task_id: str) -> dict[str, Any]:
                 )
                 if override_reasons:
                     flags.add("concept_override")
+                if normalized_lab_alias:
+                    flags.add("lab_value_span_normalized")
                 value_parse = (
                     base.parse_lab_value(source_value, pretty_name, evidence_context, context_span_start, context_span_end)
                     if "lab_or_vital_span" in flags
@@ -254,7 +258,18 @@ def process_task(task_id: str) -> dict[str, Any]:
                     reasons = sorted(set([*reasons, *override_reasons]))
 
                 concept_category = base.infer_concept_category(source_value, pretty_name, type_ids, flags)
-                assertion_preview = base.infer_assertion_preview(sentence, section, action, source_value)
+                assertion_preview = base.infer_assertion_preview(
+                    sentence,
+                    section,
+                    action,
+                    source_value,
+                    evidence_context,
+                    concept_category,
+                )
+                assertion_evaluable, assertion_evaluable_reason = base.assertion_evaluable_preview(
+                    source_value,
+                    concept_category,
+                )
                 temporality_preview = base.infer_temporality_preview(sentence, section, source_value)
                 experiencer_preview = base.infer_experiencer_preview(sentence, section, flags)
                 anatomy_cue = base.infer_context_cue(evidence_context, base.ANATOMY_CUE_PATTERNS)
@@ -279,7 +294,9 @@ def process_task(task_id: str) -> dict[str, Any]:
                     "raw_linker_pretty_name": str(
                         base.entity_field(ent, "pretty_name", "source_value", "detected_name", default="")
                     ),
+                    "raw_linker_span": base.clean(raw_source_value),
                     "concept_override_applied": bool(override_reasons),
+                    "span_normalization_applied": bool(normalized_lab_alias),
                     "linker_name": "medcat_umls_snomed_v2",
                     "linker_score": acc,
                     "score_bin": base.score_bin(acc),
@@ -288,6 +305,8 @@ def process_task(task_id: str) -> dict[str, Any]:
                     "filter_flags": sorted(flags),
                     "concept_category_preview": concept_category,
                     "assertion_status_preview": assertion_preview,
+                    "assertion_evaluable_preview": assertion_evaluable,
+                    "assertion_evaluable_reason": assertion_evaluable_reason,
                     "experiencer_preview": experiencer_preview,
                     "temporality_preview": temporality_preview,
                     "anatomical_location_cue": anatomy_cue.get("label"),

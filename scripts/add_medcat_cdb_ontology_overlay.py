@@ -85,6 +85,7 @@ COMMON_WORDS = {
     "are",
     "as",
     "at",
+    "assessment",
     "be",
     "blind",
     "by",
@@ -98,6 +99,8 @@ COMMON_WORDS = {
     "control",
     "cortex",
     "cross",
+    "course",
+    "diagnosis",
     "day",
     "development",
     "diet",
@@ -108,6 +111,7 @@ COMMON_WORDS = {
     "gave",
     "gene",
     "group",
+    "history",
     "high",
     "in",
     "low",
@@ -118,9 +122,14 @@ COMMON_WORDS = {
     "oct",
     "of",
     "on",
+    "plan",
     "or",
     "patient",
     "patients",
+    "impression",
+    "report",
+    "reports",
+    "summary",
     "secondary",
     "term",
     "the",
@@ -484,22 +493,21 @@ def process_one(
             matches = find_ontology_matches(note.get("text") or "", lexicon, max_words=max_words)
             overlapping_match_indexes: set[int] = set()
             for row in base_by_note.get(note_id, []):
-                if row.get("concept_category_preview") == "disease_or_diagnosis":
-                    try:
-                        ps, pe = int(row.get("span_start")), int(row.get("span_end"))
-                    except (TypeError, ValueError):
-                        ps, pe = -1, -1
-                    for match_i, match in enumerate(matches):
-                        if overlaps(ps, pe, int(match["span_start"]), int(match["span_end"])):
-                            overlapping_match_indexes.add(match_i)
-                            if overlap_mode == "replace":
-                                dropped_overlap += 1
-                                break
-                    else:
-                        out_fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-                        continue
-                    if overlap_mode == "replace":
-                        continue
+                try:
+                    ps, pe = int(row.get("span_start")), int(row.get("span_end"))
+                except (TypeError, ValueError):
+                    ps, pe = -1, -1
+                row_is_disease = row.get("concept_category_preview") == "disease_or_diagnosis"
+                row_overlaps_match = False
+                for match_i, match in enumerate(matches):
+                    if overlaps(ps, pe, int(match["span_start"]), int(match["span_end"])):
+                        row_overlaps_match = True
+                        overlapping_match_indexes.add(match_i)
+                        if overlap_mode == "replace" and row_is_disease:
+                            dropped_overlap += 1
+                            break
+                if row_is_disease and overlap_mode == "replace" and row_overlaps_match:
+                    continue
                 out_fh.write(json.dumps(row, ensure_ascii=False) + "\n")
             for match_i, match in enumerate(matches):
                 if overlap_mode == "add_missing" and match_i in overlapping_match_indexes:

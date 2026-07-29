@@ -8,6 +8,7 @@ MIMIC-style notes
   -> MedCAT span-level entity linking
   -> schema-aware candidate filtering
   -> optional MedCAT-CDB ontology overlay
+  -> optional measurement overlay
   -> optional candidate specificity gate
   -> SNOMED/UMLS normalization
   -> strict CUI-assertion pairs
@@ -23,6 +24,9 @@ If you are using this package to run extraction at another site, start with
 [`docs/genie_handoff.md`](docs/genie_handoff.md). It gives the shortest complete
 path from a fresh clone to a local smoke test and then to a private extraction
 run.
+
+For the latest refinement summary and benchmark snapshot, see
+[`docs/release_notes_20260728.md`](docs/release_notes_20260728.md).
 
 The repository is designed so each site keeps its own restricted assets outside
 git:
@@ -65,6 +69,7 @@ scripts/
   extract_medcat_candidates.py           # standard MedCAT + schema filter
   extract_medcat_candidates_prefork4.py  # optimized prefork benchmark extractor
   add_medcat_cdb_ontology_overlay.py     # optional strict disease coverage overlay
+  add_medcat_measurement_overlay.py      # optional lab/vital value overlay
   apply_candidate_specificity_gate.py    # optional broad-anchor quality gate
   build_snomed_umls_crosswalk.py         # licensed UMLS crosswalk builder
   annotate_snomed_umls_candidates.py     # add UMLS CUI mapping to candidates
@@ -184,6 +189,17 @@ python3 scripts/apply_candidate_specificity_gate.py \
   --summary-json /path/to/private/extraction_specific/specificity_gate_summary.json
 ```
 
+Optionally apply a conservative measurement overlay for common lab/vital aliases
+that are easy for a general linker to miss or over-expand:
+
+```bash
+python3 scripts/add_medcat_measurement_overlay.py \
+  --notes-jsonl-gz /path/to/private/note_shards/notes_shard_000000.jsonl.gz \
+  --candidate-jsonl /path/to/private/extraction_specific/shard_000000 \
+  --output-dir /path/to/private/extraction_measurements/shard_000000 \
+  --summary-json /path/to/private/extraction_measurements/measurement_overlay_summary.json
+```
+
 For deployable CPU auto-detection and parallel task splitting, prefer
 `scripts/run_extraction_auto.py`; the lower-level extractor remains available
 for debugging and controlled ablations.
@@ -240,6 +256,8 @@ runs the prefork MedCAT extractor, and records a run manifest. See
   schema-aware assertion and strict-pair gates.
 - The optional specificity gate is a final candidate-quality filter for broad
   disease anchors that are poor strict-pair training events.
+- The optional measurement overlay recovers common lab/vital aliases and keeps
+  numeric value/unit fields in the same candidate JSONL schema.
 - The strict training view uses UMLS-normalized CUI IDs when a licensed
   SNOMED/UMLS crosswalk is available.
 - Numeric lab/vital mentions are routed through value parsing instead of being

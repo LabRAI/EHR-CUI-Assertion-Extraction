@@ -184,8 +184,8 @@ FAMILY_ROLE_TERMS = {
 VALUE_STATUS_PATTERNS = [
     ("abnormal", re.compile(r"\b(abnormal)\b", re.I)),
     ("normal", re.compile(r"\b(normal|within normal limits|wnl)\b", re.I)),
-    ("high", re.compile(r"\b(high|elevated|increased)\b", re.I)),
-    ("low", re.compile(r"\b(low|decreased|reduced|depressed)\b", re.I)),
+    ("high", re.compile(r"\b(high|elevated|increased|up to|rose to|rising to)\b", re.I)),
+    ("low", re.compile(r"\b(low|decreased|reduced|depressed|down to|dropped to|fell to)\b", re.I)),
     ("positive", re.compile(r"\b(positive)\b", re.I)),
     ("negative", re.compile(r"\b(negative)\b", re.I)),
 ]
@@ -199,7 +199,10 @@ LAB_ALIASES = {
     "ast": ["ast", "aspartate aminotransferase"],
     "bp": ["bp", "blood pressure"],
     "blood pressure": ["bp", "blood pressure"],
+    "bnp": ["bnp", "brain natriuretic peptide", "b-type natriuretic peptide"],
+    "brain natriuretic peptide": ["bnp", "brain natriuretic peptide", "b-type natriuretic peptide"],
     "bun": ["bun", "urea"],
+    "blood leukocyte number above reference range": ["wbc", "white blood cell count"],
     "creatinine": ["creatinine", "cr"],
     "ef": ["ef", "lvef", "ejection fraction", "left ventricular ejection fraction"],
     "glucose": ["glucose", "fingerstick glucose", "fs glucose"],
@@ -228,6 +231,9 @@ LAB_ALIASES = {
     "respiratory rate": ["rr", "respiratory rate"],
     "rr": ["rr", "respiratory rate"],
     "sao2": ["sao2", "spo2", "o2 sat"],
+    "na": ["na", "sodium"],
+    "o2 sat": ["o2 sat", "oxygen saturation", "spo2", "sao2"],
+    "oxygen saturation": ["o2 sat", "oxygen saturation", "spo2", "sao2"],
     "sodium": ["sodium", "na"],
     "spo2": ["spo2", "sao2", "o2 sat"],
     "wbc": ["wbc", "white blood cell count"],
@@ -236,7 +242,7 @@ LAB_ALIASES = {
 
 UNIT_PATTERN = (
     r"%|mg/dl|mmol/l|meq/l|k/u?l|x10\^?3|g/dl|sec|secs|bpm|mmhg|mm hg|"
-    r"cmh2o|iu|u/l|ng/ml|mcg/ml|mg/hr|insp/min"
+    r"cmh2o|iu|u/l|ng/ml|mcg/ml|pg/ml|mg/hr|insp/min|/min"
 )
 NUMERIC_VALUE_PATTERN = r"\d+(?:\.\d+)?(?:'?s)?(?:\s*-\s*\d+(?:\.\d+)?(?:'?s)?)?(?:/\d+(?:\.\d+)?(?:\(\d+\))?)?"
 SIMPLE_NUMERIC_VALUE_PATTERN = r"\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?"
@@ -348,9 +354,16 @@ def default_action_for_score(score: float) -> str:
 
 
 def sentence_for_span(text: str, start: int, end: int, max_chars: int) -> str:
-    left = max(text.rfind(".", 0, start), text.rfind("\n", 0, start), text.rfind(";", 0, start))
-    right_candidates = [pos for pos in (text.find(".", end), text.find("\n", end), text.find(";", end)) if pos != -1]
-    right = min(right_candidates) if right_candidates else min(len(text), end + 220)
+    boundary = re.compile(r"(?<!\d)[.!?](?!\d)|\n|;")
+    left = -1
+    for match in boundary.finditer(text, 0, start):
+        left = match.start()
+    right = len(text)
+    for match in boundary.finditer(text, end):
+        right = match.start()
+        break
+    if right == len(text):
+        right = min(len(text), end + 220)
     return clean(text[left + 1 : right + 1])[:max_chars]
 
 
@@ -651,10 +664,13 @@ def has_scoped_conditional(text: str, span: str) -> bool:
     target = scoped_span_pattern(span)
     if not target:
         return bool(CONDITIONAL_CUE.search(text))
+    for match in re.finditer(rf"{target}[^.;:]{{0,100}}\b(if|unless|when|whenever|prn|as needed|if needed|if necessary|hold if|call if|return if|use as needed|take as needed)\b", text, re.I):
+        middle = text[match.start() : match.end()]
+        if not re.search(r"\b(consider|monitor for|watch for|evaluate for|plan to|think about|suggest)\b", middle, re.I):
+            return True
     return bool(
         re.search(rf"\b(if|unless|when|whenever|provided that|in case of|return if|call if)\b[^.;:]{{0,140}}{target}", text, re.I)
         or re.search(rf"\b(prn|as needed|if needed|if necessary|use as needed|take as needed)\b[^.;:]{{0,100}}{target}", text, re.I)
-        or re.search(rf"{target}[^.;:]{{0,100}}\b(prn|as needed|if needed|if necessary|if confirmed|if culture is positive)\b", text, re.I)
     )
 
 
@@ -680,18 +696,18 @@ def has_scoped_possible(text: str, span: str) -> bool:
     target = scoped_span_pattern(span)
     if not target:
         return bool(POSSIBLE_CUE.search(text))
-    return bool(
-        re.search(
-            rf"\b(possible|possibly|probable|probably|suspected|suspicious for|concern(?:ing)? for|"
-            rf"question of|rule out|r/o|cannot rule out|cannot exclude|cannot be excluded|"
-            rf"may have|may represent|may reflect|might represent|could represent|could reflect|"
-            rf"suggestive of|compatible with|consistent with)\b[^.;:]{{0,140}}{target}",
-            text,
-            re.I,
-        )
-        or re.search(rf"{target}[^.;:]{{0,140}}\b(possible|possibly|probable|suspected|cannot be excluded|cannot exclude|vs\.?|versus)\b", text, re.I)
-        or re.search(rf"\bdifferential includes\b[^.;:]{{0,140}}{target}", text, re.I)
-    )
+    for match in re.finditer(
+        rf"\b(possible|possibly|probable|probably|suspected|suspicious for|concern(?:ing)? for|"
+        rf"question of|rule out|r/o|cannot rule out|cannot exclude|cannot be excluded|"
+        rf"may have|may represent|may reflect|might represent|could represent|could reflect|"
+        rf"suggestive of|compatible with|consistent with)\b[^.;:]{{0,140}}{target}",
+        text,
+        re.I,
+    ):
+        middle = text[match.start() : match.end()]
+        if not re.search(r"\b(after|with|on|from|due to|because|in|during|through|of)\b", middle, re.I):
+            return True
+    return bool(re.search(rf"{target}[^.;:]{{0,120}}\b(cannot be excluded|cannot exclude|cannot rule out|rule out|r/o)\b", text, re.I))
 
 
 def has_scoped_hypothetical(text: str, span: str) -> bool:
@@ -711,28 +727,302 @@ def has_scoped_historical(text: str, span: str) -> bool:
     return bool(
         re.search(
             rf"\b(history of|h/o|hx of|past medical history|past surgical history|pmh|pmhx|"
-            rf"previous|previously|prior|remote|former|status post|s/p|underwent|"
-            rf"was diagnosed|were diagnosed|had been diagnosed)\b[^.;:]{{0,160}}{target}",
+            rf"history includes|previous|previously|prior|remote|former|status post|s/p|underwent|"
+            rf"was diagnosed|were diagnosed|had been diagnosed|known|longstanding|home meds include|home medications include|home med includes)\b[^.;:]{{0,160}}{target}",
             text,
             re.I,
         )
-        or re.search(rf"{target}[^.;:]{{0,100}}\b(history|prior|previous|remote|status post|s/p|treated with surgery)\b", text, re.I)
     )
 
 
-def infer_assertion_preview(sentence: str, section: str, action: str, span: str = "") -> str:
+LOW_VALUE_ASSERTION_SPANS = {
+    "",
+    "a",
+    "acls",
+    "alert",
+    "awake",
+    "child",
+    "diet",
+    "eomi",
+    "finding",
+    "findings",
+    "heart",
+    "lung",
+    "lungs",
+    "moves",
+    "nose",
+    "ns",
+    "perrl",
+    "related",
+    "report",
+    "reports",
+    "skin",
+    "study",
+    "studies",
+    "term",
+}
+LOW_VALUE_ASSERTION_PATTERNS = [
+    re.compile(r"^(?:right|left|bilateral|upper|lower)$", re.I),
+    re.compile(r"^(?:finger to )?nose$", re.I),
+    re.compile(r"^(?:awake|alert|oriented)(?: x?\d)?$", re.I),
+    re.compile(r"^(?:normal|abnormal|positive|negative)$", re.I),
+    re.compile(r"^(?:moves?|moving|movement)$", re.I),
+]
+PAST_HISTORY_SECTION = re.compile(r"\b(past medical history|past surgical history|pmh|pmhx|psh)\b", re.I)
+CURRENT_EVENT_SECTION = re.compile(
+    r"\b(history of present illness|hpi|chief complaint|brief hospital course|hospital course|"
+    r"pertinent results?|imaging|physical exam|discharge diagnoses?|diagnosis)\b",
+    re.I,
+)
+
+
+def assertion_evaluable_preview(span: str, concept_category: str) -> tuple[bool, str]:
+    if concept_category not in {"disease_or_diagnosis", "finding"}:
+        return False, "non_core_category"
+    span_key = norm_key(span).strip(" :;,.()[]{}")
+    if span_key in LOW_VALUE_ASSERTION_SPANS:
+        return False, "low_value_span_stoplist"
+    if len(span_key) <= 2 and span_key not in {"mi", "pe"}:
+        return False, "too_short_non_specific_span"
+    if any(pattern.search(span_key) for pattern in LOW_VALUE_ASSERTION_PATTERNS):
+        return False, "low_value_span_pattern"
+    return True, "assertion_evaluable"
+
+
+def span_positions(text: str, span: str) -> list[tuple[int, int]]:
+    span_key = norm_key(span).strip(" :;,.()[]{}")
+    if not span_key:
+        return []
+    pattern = re.compile(rf"(?<!\w){re.escape(span_key)}(?!\w)", re.I)
+    out = [(match.start(), match.end()) for match in pattern.finditer(text)]
+    if out:
+        return out
+    idx = text.find(span_key)
+    return [(idx, idx + len(span_key))] if idx >= 0 else []
+
+
+def same_clause_before(fragment: str) -> str:
+    idx = max(fragment.rfind("."), fragment.rfind(";"), fragment.rfind("\n"))
+    return fragment[idx + 1 :] if idx >= 0 else fragment
+
+
+def same_clause_after(fragment: str) -> str:
+    stops = [idx for idx in (fragment.find("."), fragment.find(";"), fragment.find("\n")) if idx >= 0]
+    return fragment[: min(stops)] if stops else fragment
+
+
+def window_before(text: str, span: str, width: int, same_clause: bool = True) -> list[str]:
+    windows = [text[max(0, start - width) : start] for start, _ in span_positions(text, span)]
+    return [same_clause_before(window) for window in windows] if same_clause else windows
+
+
+def window_after(text: str, span: str, width: int, same_clause: bool = True) -> list[str]:
+    windows = [text[end : end + width] for _, end in span_positions(text, span)]
+    return [same_clause_after(window) for window in windows] if same_clause else windows
+
+
+def any_window_has(windows: list[str], patterns: list[str]) -> bool:
+    return any(re.search(pattern, window, re.I) for window in windows for pattern in patterns)
+
+
+def overlay_text(sentence: str, evidence_context: str = "") -> str:
+    text = clean(evidence_context) if evidence_context else clean(sentence)
+    return norm_key(text)
+
+
+def has_overlay_conditional(text: str, span: str) -> bool:
+    before = window_before(text, span, 180)
+    after = window_after(text, span, 120)
+    return any_window_has(
+        before,
+        [
+            r"\bif\b",
+            r"\bwhen\b",
+            r"\bunless\b",
+            r"\bin case of\b",
+            r"\bcall (?:md|doctor|pcp|provider|surgeon).* if\b",
+            r"\breturn (?:to|for).* if\b",
+            r"\b(?:prn|as needed|if needed|if necessary)\b",
+        ],
+    ) or any_window_has(after, [r"\b(?:prn|as needed|if needed|if necessary)\b"])
+
+
+def has_overlay_negation(text: str, span: str) -> bool:
+    before = window_before(text, span, 170)
+    after = window_after(text, span, 100)
+    if any_window_has(
+        before,
+        [
+            r"\bno (?:change|changes|improvement|increase|decrease) in\b",
+            r"\bnot (?:improve|respond|controlled|tolerated) with\b",
+            r"\bwithout (?:change|improvement|increase|decrease) in\b",
+        ],
+    ):
+        return False
+    return any_window_has(
+        before,
+        [
+            r"\bno\b",
+            r"\bdenies?\b",
+            r"\bdenied\b",
+            r"\bwithout\b",
+            r"\bw/o\b",
+            r"\bnegative for\b",
+            r"\bfree of\b",
+            r"\bno evidence of\b",
+            r"\bno sign(?:s)? of\b",
+            r"\babsence of\b",
+            r"\black of\b",
+            r"\bruled out\b",
+        ],
+    ) or any_window_has(
+        after,
+        [
+            r"\b(?:was|were)? ?ruled out\b",
+            r"\b(?:negative|absent|normal|unremarkable)\b",
+            r"\bnot (?:seen|found|detected|present)\b",
+        ],
+    )
+
+
+def has_overlay_possible(text: str, span: str) -> bool:
+    before = window_before(text, span, 190)
+    after = window_after(text, span, 130)
+    return any_window_has(
+        before,
+        [
+            r"\b(?:possible|possibly|probable|probably|likely)\b",
+            r"\b(?:suspected|presumed|suspicious for|concern for|concerning for)\b",
+            r"\b(?:question of|questionable|\?|\br/o\b|rule out)\b",
+            r"\b(?:may|might|could) (?:represent|be|reflect|indicate|suggest|have led to|be due to|be related to)\b",
+            r"\b(?:suggestive of|consistent with|compatible with)\b",
+            r"\bdifferential (?:also )?(?:includes|included)\b",
+            r"\b(?:felt|thought|considered) (?:to be )?(?:likely|possibly|probably)? ?(?:secondary to|due to|related to)\b",
+        ],
+    ) or any_window_has(
+        after,
+        [
+            r"^\W*(?:is|was|were|be)?\W*(?:possible|probable|suspected|likely)\b",
+            r"^\W*(?:vs\.?|versus|and/or)\b",
+            r"\b(?:cannot be excluded|cannot exclude|cannot rule out)\b",
+        ],
+    )
+
+
+def has_overlay_hypothetical(text: str, span: str) -> bool:
+    before = window_before(text, span, 180)
+    after = window_after(text, span, 130)
+    return any_window_has(
+        before,
+        [
+            r"\b(?:monitor|monitoring|watch|observe) for\b",
+            r"\b(?:evaluate|evaluation|workup|screening|screen) for\b",
+            r"\b(?:prophylaxis|prevent|prevention) (?:of|for)\b",
+            r"\b(?:risk of|risk for)\b",
+            r"\b(?:may|can|could) cause\b",
+            r"\bto avoid\b",
+            r"\b(?:plan|plans|planned|planning) (?:for|to)\b",
+            r"\b(?:scheduled|schedule) (?:for|to)\b",
+        ],
+    ) or any_window_has(after, [r"\b(?:would require|will require|may require|could lead to|may cause)\b"])
+
+
+def has_close_history_cue(text: str, span: str) -> bool:
+    before = window_before(text, span, 80)
+    after = window_after(text, span, 60)
+    return any_window_has(
+        before,
+        [
+            r"\b(?:history of|h/o|hx of|hx)\b",
+            r"\b(?:past|prior|previous|remote|old)\b",
+            r"\bstatus post\b",
+            r"\bs/p\b",
+            r"\bknown\b",
+            r"\blongstanding\b",
+        ],
+    ) or any_window_has(after, [r"\b(?:in the past|previously|prior to admission)\b"])
+
+
+def has_overlay_historical(text: str, section: str, span: str) -> bool:
+    if PAST_HISTORY_SECTION.search(section or ""):
+        return True
+    before = window_before(text, span, 190)
+    after = window_after(text, span, 100)
+    return any_window_has(
+        before,
+        [
+            r"\b(?:history of|h/o|hx of|hx)\b",
+            r"\b(?:past|prior|previous|remote|old)\b",
+            r"\bstatus post\b",
+            r"\bs/p\b",
+            r"\bknown\b",
+            r"\blongstanding\b",
+            r"\bhome (?:meds|medications?) include\b",
+            r"\bpreviously (?:diagnosed|treated)\b",
+        ],
+    ) or any_window_has(after, [r"\b(?:in the past|previously|prior to admission)\b"])
+
+
+def has_overlay_current_event(text: str, section: str, span: str) -> bool:
+    if has_close_history_cue(text, span):
+        return False
+    if not CURRENT_EVENT_SECTION.search(section or ""):
+        return False
+    before = window_before(text, span, 170)
+    after = window_after(text, span, 80)
+    return any_window_has(
+        before,
+        [
+            r"\bcurrently\b",
+            r"\btoday\b",
+            r"\bon arrival\b",
+            r"\bin the (?:ed|er|icu|micu|ccu)\b",
+            r"\bat admission\b",
+            r"\bsince\b",
+            r"\bfor (?:the )?(?:past|last)? ?\d+\b",
+            r"\b(?:presents?|presented|presenting) (?:with|for|from)\b",
+            r"\bp/w\b",
+            r"\bc/o\b",
+            r"\bcomplain(?:s|ed|ing)? of\b",
+            r"\breports?\b",
+            r"\bendorsi(?:ng|es|ed)\b",
+            r"\bdevelop(?:ed|s|ing)\b",
+            r"\bwas noted to (?:be|have)\b",
+            r"\bfound to (?:be|have)\b",
+            r"\b(?:showed|shows|showing|did show)\b",
+            r"\b(?:revealed|demonstrated|confirmed)\b",
+            r"\bread to have\b",
+            r"\btreated (?:with|for)\b",
+            r"\bstarted on\b",
+            r"\breceived\b",
+            r"\bgiven\b",
+            r"\b(?:has|had|is|was|were) (?:a |an |some |mild |moderate |severe |acute |chronic |new |recurrent )?$",
+        ],
+    ) or any_window_has(after, [r"^\W*(?:x|for) \d+", r"\b(?:was|were) treated\b"])
+
+
+def infer_assertion_preview(
+    sentence: str,
+    section: str,
+    action: str,
+    span: str = "",
+    evidence_context: str = "",
+    concept_category: str = "",
+) -> str:
     if action == "value_parse":
         return "not_applicable"
-    text = f"{section} {sentence}"
-    if has_scoped_conditional(sentence, span):
+    text = overlay_text(sentence, evidence_context)
+    if has_overlay_conditional(text, span) or has_scoped_conditional(sentence, span):
         return "conditional"
-    if has_scoped_negation(sentence, span):
+    if has_overlay_negation(text, span) or has_scoped_negation(sentence, span):
         return "absent"
-    if has_scoped_possible(sentence, span):
+    if has_overlay_possible(text, span) or has_scoped_possible(sentence, span):
         return "possible"
-    if has_scoped_hypothetical(sentence, span):
+    if has_overlay_hypothetical(text, span) or has_scoped_hypothetical(sentence, span):
         return "hypothetical"
-    if has_scoped_historical(text, span):
+    if has_overlay_current_event(text, section, span):
+        return "present"
+    if has_overlay_historical(text, section, span):
         return "historical"
     return "present"
 
@@ -782,6 +1072,85 @@ def infer_local_value_status(context: str, start: int | None = None, end: int | 
     return infer_value_status(local)
 
 
+def all_known_lab_aliases() -> list[str]:
+    aliases: set[str] = set(LAB_ALIASES)
+    for values in LAB_ALIASES.values():
+        aliases.update(values)
+    return sorted((alias for alias in aliases if alias), key=len, reverse=True)
+
+
+def leading_lab_alias(span: str) -> str | None:
+    span_key = norm_key(span)
+    if not span_key:
+        return None
+    for alias in all_known_lab_aliases():
+        if span_key == alias or span_key.startswith(f"{alias} "):
+            return alias
+    return None
+
+
+def lab_like_candidate(span: str, pretty_name: str, sentence: str, section: str, context: str) -> bool:
+    span_key = norm_key(span)
+    pretty_key = norm_key(pretty_name)
+    text = f"{span_key} {pretty_key}"
+    if leading_lab_alias(span):
+        return bool(NUMERIC_CONTEXT.search(f"{sentence} {context}"))
+    if any(alias in LAB_ALIASES for alias in (span_key, pretty_key)):
+        return bool(NUMERIC_CONTEXT.search(f"{sentence} {context}"))
+    if re.search(r"\b(?:leukocyte|white blood cell|natriuretic peptide|oxygen saturation)\b", text, re.I):
+        return bool(NUMERIC_CONTEXT.search(f"{sentence} {context}"))
+    if re.search(r"\b(?:labs?|laboratory|vitals?|coag(?:s|ulation)?|hematology)\b", section, re.I):
+        return bool(leading_lab_alias(span) or pretty_key in LAB_ALIASES)
+    return False
+
+
+def normalize_lab_value_span(span: str, start: int, end: int) -> tuple[str, int, int, str | None]:
+    alias = leading_lab_alias(span)
+    if not alias:
+        return span, start, end, None
+    span_key = norm_key(span)
+    if span_key == alias:
+        return span, start, end, None
+    suffix = span_key[len(alias) :].strip()
+    if not re.match(r"^(?:high|low|elevated|increased|decreased|reduced|depressed|abnormal|normal|stable)\b", suffix):
+        return span, start, end, None
+    raw = clean(span)
+    alias_len = len(raw[: len(alias)])
+    return raw[:alias_len], start, start + alias_len, alias
+
+
+def infer_value_status_from_match(
+    span: str,
+    pretty_name: str,
+    text: str,
+    context: str,
+    start: int | None,
+    end: int | None,
+    numeric_value: str | None = None,
+) -> str:
+    match_status = infer_value_status(text)
+    if match_status != "unknown":
+        return match_status
+    if re.search(r"\bstable\b", text, re.I):
+        return "normal"
+    alias = leading_lab_alias(span) or leading_lab_alias(pretty_name) or norm_key(pretty_name)
+    if numeric_value is not None and alias in {"rr", "respiratory rate"}:
+        try:
+            rr_value = float(str(numeric_value).split("/")[0])
+        except ValueError:
+            rr_value = None
+        if rr_value is not None:
+            if rr_value >= 21:
+                return "high"
+            if rr_value <= 11:
+                return "low"
+            return "normal"
+    local_status = infer_local_value_status(context, start, end)
+    if local_status != "unknown" and re.search(r"\b(?:high|elevated|increased|low|decreased|reduced|depressed|normal|abnormal|positive|negative)\b", context[max(0, (start or 0) - 15) : min(len(context), (end or 0) + 35)], re.I):
+        return local_status
+    return "unknown"
+
+
 def aliases_for_lab(span: str, pretty_name: str) -> list[str]:
     candidates = [norm_key(span), norm_key(pretty_name)]
     aliases = []
@@ -790,6 +1159,10 @@ def aliases_for_lab(span: str, pretty_name: str) -> list[str]:
             continue
         aliases.append(candidate)
         aliases.extend(LAB_ALIASES.get(candidate, []))
+        leading_alias = leading_lab_alias(candidate)
+        if leading_alias:
+            aliases.append(leading_alias)
+            aliases.extend(LAB_ALIASES.get(leading_alias, []))
     # Keep short aliases after longer aliases so "blood pressure" matches before "bp".
     return sorted(set(a for a in aliases if a), key=len, reverse=True)
 
@@ -900,11 +1273,11 @@ def maybe_numeric_from_vital_table(span: str, pretty_name: str, context: str, st
         label = "HR"
     elif target_alias == "bp":
         value = row.group("bp")
-        unit = "mmHg"
+        unit = "mm Hg"
         label = "BP"
     elif target_alias == "rr" and "rr" in row.groupdict():
         value = row.group("rr")
-        unit = "insp/min"
+        unit = "/min"
         label = "RR"
     elif target_alias in {"spo2", "sao2", "o2 sat"} and "spo2" in row.groupdict():
         value = row.group("spo2")
@@ -926,12 +1299,18 @@ def maybe_numeric_from_vital_table(span: str, pretty_name: str, context: str, st
 
 
 def default_unit_for_lab(aliases: set[str]) -> str | None:
+    if aliases & {"na", "sodium"}:
+        return "mmol/L"
+    if aliases & {"wbc", "white blood cell count"}:
+        return "K/uL"
+    if aliases & {"bnp", "brain natriuretic peptide", "b-type natriuretic peptide"}:
+        return "pg/mL"
     if aliases & {"hr", "heart rate"}:
         return "bpm"
     if aliases & {"bp", "blood pressure"}:
-        return "mmHg"
+        return "mm Hg"
     if aliases & {"rr", "respiratory rate"}:
-        return "insp/min"
+        return "/min"
     if aliases & {"spo2", "sao2", "o2 sat"}:
         return "%"
     if aliases & {"ef", "lvef", "ejection fraction", "left ventricular ejection fraction"}:
@@ -948,7 +1327,7 @@ def maybe_numeric_from_approx_phrase(span: str, pretty_name: str, context: str, 
         name_boundary = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
         pattern = re.compile(
             rf"(?i){name_boundary}"
-            rf"(?P<bridge>[^.\n;\d<>]{{0,55}}\b(?:to|up to|down to|increased to|decreased to|ranged? to|as high as|as low as|in the|(?:back\s+)?into)\b[^.\n;\d<>]{{0,20}})"
+            rf"(?P<bridge>[^.\n;\d<>]{{0,55}}\b(?:to|at|up to|down to|high at|low at|elevated to|increased to|decreased to|reduced to|dropped to|rose to|stable at|ranged? to|as high as|as low as|in the|(?:back\s+)?into)\b[^.\n;\d<>]{{0,20}})"
             rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*(?P<unit>{UNIT_PATTERN})?"
         )
         matches = [
@@ -965,7 +1344,7 @@ def maybe_numeric_from_approx_phrase(span: str, pretty_name: str, context: str, 
                 "unit": clean(match.group("unit") or "") or default_unit_for_lab(alias_set),
                 "comparator": match.group("comparator"),
                 "value_text": clean(match.group(0)),
-                "value_status": infer_local_value_status(local_context, match.start(), match.end()),
+                "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start(), match.end(), match.group("value")),
                 "value_parse_method": "approximate_or_range_phrase_regex",
                 "measurement_context": "observed_patient",
             }
@@ -1201,7 +1580,9 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
         name_boundary = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
         pattern = re.compile(
             rf"(?i){name_boundary}\s*(?:\([^)]{{0,30}}\))?\s*(?:[:=,\-]|\bof\b)?\s*"
-            rf"(?:is|was|are|were|estimated|approximately|about|around|~|at)?\s*"
+            rf"(?:is|was|are|were|estimated|approximately|about|around|~|at|"
+            rf"stable\s+at|normal\s+at|high\s+at|low\s+at|elevated\s+to|"
+            rf"increased\s+to|decreased\s+to|reduced\s+to|dropped\s+to)?\s*"
             rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*"
             rf"(?P<unit>{UNIT_PATTERN})?"
         )
@@ -1216,7 +1597,7 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
                 "unit": clean(match.group("unit") or "") or None,
                 "comparator": match.group("comparator"),
                 "value_text": clean(match.group(0)),
-                "value_status": infer_local_value_status(local_context, match.start(), match.end()),
+                "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start(), match.end(), match.group("value")),
                 "value_parse_method": "span_followed_by_numeric_regex",
                 "measurement_context": infer_measurement_context(span, pretty_name, local_context, match.start(), match.end()),
             }
@@ -1232,7 +1613,7 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
             "unit": "%",
             "comparator": fraction_like.group("comparator"),
             "value_text": clean(fraction_like.group(0)),
-            "value_status": infer_local_value_status(local_context, fraction_like.start(), fraction_like.end()),
+            "value_status": infer_value_status_from_match(span, pretty_name, fraction_like.group(0), local_context, fraction_like.start(), fraction_like.end(), fraction_like.group("value")),
             "value_parse_method": "ejection_fraction_regex",
             "measurement_context": "observed_patient",
         }
@@ -1241,10 +1622,10 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
     if bp_like and any(a in {"bp", "blood pressure"} for a in aliases):
         return {
             "numeric_value": bp_like.group("value"),
-            "unit": "mmHg",
+            "unit": "mm Hg",
             "comparator": None,
             "value_text": clean(bp_like.group(0)),
-            "value_status": infer_local_value_status(local_context, bp_like.start(), bp_like.end()),
+            "value_status": infer_value_status_from_match(span, pretty_name, bp_like.group(0), local_context, bp_like.start(), bp_like.end(), bp_like.group("value")),
             "value_parse_method": "blood_pressure_regex",
             "measurement_context": "observed_patient",
         }
@@ -1661,7 +2042,7 @@ def filter_flags(
     if generic_reason:
         flags.add(generic_reason)
         flags.add("generic_or_artifact_target")
-    if span_key in lab_spans or pretty_key in lab_spans:
+    if span_key in lab_spans or pretty_key in lab_spans or lab_like_candidate(span, pretty_name, sentence, section, context):
         flags.add("lab_or_vital_span")
     if upper in high_risk or (clean(span).isupper() and 2 <= len(clean(span)) <= 5):
         flags.add("abbreviation_needs_context")
@@ -2116,7 +2497,9 @@ def main() -> int:
                     continue
                 raw_id = str(entity_field(ent, "cui", "id", default=""))
                 pretty_name = str(entity_field(ent, "pretty_name", "source_value", "detected_name", default=""))
-                source_value = str(entity_field(ent, "source_value", "detected_name", default=snippet[start:end]))
+                raw_source_value = str(entity_field(ent, "source_value", "detected_name", default=snippet[start:end]))
+                source_value = raw_source_value
+                source_value, start, end, normalized_lab_alias = normalize_lab_value_span(source_value, start, end)
                 types = entity_field(ent, "type_ids", "types", default=[]) or []
                 if isinstance(types, str):
                     types = [types]
@@ -2154,6 +2537,8 @@ def main() -> int:
                 )
                 if override_reasons:
                     flags.add("concept_override")
+                if normalized_lab_alias:
+                    flags.add("lab_value_span_normalized")
                 value_parse = parse_lab_value(
                     source_value,
                     pretty_name,
@@ -2198,7 +2583,18 @@ def main() -> int:
                     reasons = sorted(set([*reasons, *override_reasons]))
 
                 concept_category = infer_concept_category(source_value, pretty_name, type_ids, flags)
-                assertion_preview = infer_assertion_preview(sentence, section, action, source_value)
+                assertion_preview = infer_assertion_preview(
+                    sentence,
+                    section,
+                    action,
+                    source_value,
+                    evidence_context,
+                    concept_category,
+                )
+                assertion_evaluable, assertion_evaluable_reason = assertion_evaluable_preview(
+                    source_value,
+                    concept_category,
+                )
                 temporality_preview = infer_temporality_preview(sentence, section, source_value)
                 experiencer_preview = infer_experiencer_preview(sentence, section, flags)
                 anatomy_cue = infer_context_cue(evidence_context, ANATOMY_CUE_PATTERNS)
@@ -2221,7 +2617,9 @@ def main() -> int:
                     "type_ids": type_ids,
                     "raw_linker_concept_id": str(entity_field(ent, "cui", "id", default="")),
                     "raw_linker_pretty_name": str(entity_field(ent, "pretty_name", "source_value", "detected_name", default="")),
+                    "raw_linker_span": clean(raw_source_value),
                     "concept_override_applied": bool(override_reasons),
+                    "span_normalization_applied": bool(normalized_lab_alias),
                     "linker_name": "medcat_umls_snomed_v2",
                     "linker_score": acc,
                     "score_bin": score_bin(acc),
@@ -2230,6 +2628,8 @@ def main() -> int:
                     "filter_flags": sorted(flags),
                     "concept_category_preview": concept_category,
                     "assertion_status_preview": assertion_preview,
+                    "assertion_evaluable_preview": assertion_evaluable,
+                    "assertion_evaluable_reason": assertion_evaluable_reason,
                     "experiencer_preview": experiencer_preview,
                     "temporality_preview": temporality_preview,
                     "anatomical_location_cue": anatomy_cue.get("label"),

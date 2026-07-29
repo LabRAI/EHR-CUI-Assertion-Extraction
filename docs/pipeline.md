@@ -82,7 +82,27 @@ the same way as the original view.
 Use this when validation shows that broad disease anchors are inflating false
 positives or adding low-specificity events to the training view.
 
-## 5. Normalize To UMLS CUI
+## 5. Optional Measurement Overlay
+
+`scripts/add_medcat_measurement_overlay.py` can repair or add conservative
+lab/vital measurement rows for common aliases such as sodium/Na, BNP, WBC,
+heart rate, blood pressure, oxygen saturation, LVEF, creatinine, troponin,
+glucose, PT/PTT, and INR.
+
+This stage is designed for notes where the target clinical event includes a
+numeric measurement. It keeps the candidate JSONL schema unchanged and fills
+the value fields when the local context contains a parseable numeric value:
+
+- `value_status`;
+- `numeric_value`;
+- `unit`;
+- `value_text`;
+- `measurement_context`.
+
+Use this when site-local validation shows that value-bearing lab/vital spans
+are being missed or over-expanded by the linker.
+
+## 6. Normalize To UMLS CUI
 
 Some MedCAT modelpacks return SNOMED IDs. When UMLS CUI output is required:
 
@@ -91,7 +111,7 @@ Some MedCAT modelpacks return SNOMED IDs. When UMLS CUI output is required:
 2. `scripts/annotate_snomed_umls_candidates.py` adds preferred UMLS CUI and
    mapping-status fields to each candidate record.
 
-## 6. Create Strict Pair Splits
+## 7. Create Strict Pair Splits
 
 `scripts/build_full_shard_strict_pair_splits.py` streams annotated candidates,
 applies `strict_decision`, and writes train/dev/test splits by subject hash.
@@ -119,7 +139,7 @@ Pair shape:
 }
 ```
 
-## 7. Validate And Benchmark
+## 8. Validate And Benchmark
 
 Use the validation and summary utilities to check:
 
