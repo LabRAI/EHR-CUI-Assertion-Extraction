@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Deployment-friendly auto runner for schema-aware MedCAT extraction.
+"""Adaptive CPU runner for the MedCAT candidate-linking stage.
 
 The script detects available CPU cores, builds an explicit task config, and
-dispatches the optimized prefork extractor. It is the recommended entry point
-for users who have already staged note shards and a licensed MedCAT modelpack.
+dispatches the optimized prefork extractor. Use run_final_extraction.py for the
+complete production pipeline.
 """
 
 from __future__ import annotations
@@ -31,6 +31,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-notes", type=int, default=0, help="0 means all notes in provided shards")
     parser.add_argument("--max-note-chars", type=int, default=7000)
     parser.add_argument("--min-acc", type=float, default=0.0)
+    parser.add_argument(
+        "--output-mode",
+        choices=["all_non_rejected", "strict_pre_umls"],
+        default="strict_pre_umls",
+        help="Candidate output contract; complete downstream pipelines require all_non_rejected.",
+    )
     parser.add_argument("--pre-umls-min-keep-score", type=float, default=0.99)
     parser.add_argument("--sentence-chars", type=int, default=420)
     parser.add_argument("--context-chars", type=int, default=650)
@@ -169,6 +175,7 @@ def main() -> int:
         "workers": workers,
         "lazy_load_notes": True,
         "max_note_chars": int(args.max_note_chars),
+        "output_mode": args.output_mode,
         "pre_umls_min_keep_score": float(args.pre_umls_min_keep_score),
         "gzip_compresslevel": int(args.gzip_compresslevel),
         "max_rejected_records": 0,
@@ -209,6 +216,8 @@ def main() -> int:
         str(args.max_note_chars),
         "--min-acc",
         str(args.min_acc),
+        "--output-mode",
+        args.output_mode,
         "--pre-umls-min-keep-score",
         str(args.pre_umls_min_keep_score),
         "--sentence-chars",
@@ -238,6 +247,7 @@ def main() -> int:
         "planned_notes": total_planned,
         "workers": workers,
         "task_count": len(tasks),
+        "output_mode": args.output_mode,
         "command": cmd,
         "dry_run": bool(args.dry_run),
     }

@@ -68,8 +68,10 @@ KNOWN_SECTION_HEADERS = {
     "vitals",
 }
 NUMERIC_CONTEXT = re.compile(
-    r"(?i)(?:<=|>=|<|>)?\s*\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?(?:\(\d+\))?)?"
-    r"\s*(?:%|mg/dl|mmol/l|meq/l|k/u?l|x10\^?3|g/dl|sec|s|bpm|mmhg|mm hg|cmh2o|iu|u/l|ng/ml|mcg/ml|mg/hr|insp/min)?"
+    r"(?i)(?:<=|>=|<|>)?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:/\d+(?:\.\d+)?(?:\(\d+\))?)?"
+    r"\s*(?:%|percent|mg/dl|mg/l(?:\s*feu)?|mmol/l|meq/l|k/u?l|cells/u?l|x10\^?3|x10\^?9/l|10\^?9/l|g/dl|gm/dl|g/l|"
+    r"beats?/min(?:ute)?|breaths?/min(?:ute)?|ratio|p?h|sec|seconds?|s|bpm|mmhg|mm hg|degrees?\s*c|deg(?:ree)?s?\s*c|"
+    r"cmh2o|iu|u/l|ng/ml|mcg/ml|pg/ml|mg/hr|insp/min|/min|per[_ ]?min)?"
 )
 NEGATION_CUE = re.compile(
     r"\b(no|not|none|neither|nor|denies|denied|without|w/o|negative for|negative|"
@@ -192,11 +194,22 @@ VALUE_STATUS_PATTERNS = [
 
 LAB_ALIASES = {
     "alanine aminotransferase": ["alt", "alanine aminotransferase"],
+    "albumin": ["albumin"],
+    "amylase": ["amylase"],
+    "anc": ["anc", "absolute neutrophil count", "neutrophil count"],
     "alkaline phosphatase": ["alkphos", "alk phos", "alkaline phosphatase"],
     "alt": ["alt", "alanine aminotransferase"],
     "alkphos": ["alkphos", "alk phos", "alkaline phosphatase"],
     "aspartate aminotransferase": ["ast", "aspartate aminotransferase"],
     "ast": ["ast", "aspartate aminotransferase"],
+    "bicarbonate": ["bicarbonate", "bicarb", "hco3", "co2"],
+    "bilirubin": ["bilirubin", "t bili", "tbili", "total bilirubin"],
+    "calcium": ["calcium"],
+    "ca 19-9": ["ca 19-9", "ca19-9", "cancer antigen 19-9", "carbohydrate antigen 19-9"],
+    "cancer antigen 19-9": ["ca 19-9", "ca19-9", "cancer antigen 19-9", "carbohydrate antigen 19-9"],
+    "crp": ["crp", "c reactive protein", "c-reactive protein"],
+    "d-dimer": ["d-dimer", "ddimer", "d dimer"],
+    "ldh": ["ldh", "lactate dehydrogenase", "l-lactate dehydrogenase"],
     "bp": ["bp", "blood pressure"],
     "blood pressure": ["bp", "blood pressure"],
     "bnp": ["bnp", "brain natriuretic peptide", "b-type natriuretic peptide"],
@@ -212,40 +225,56 @@ LAB_ALIASES = {
     "hgb": ["hgb", "hemoglobin"],
     "heart rate": ["hr", "heart rate"],
     "hr": ["hr", "heart rate"],
+    "lactate": ["lactate"],
+    "lipase": ["lipase"],
+    "magnesium": ["magnesium", "mag"],
     "inr": ["inr"],
     "international normalized ratio": ["inr", "international normalized ratio"],
-    "lactate": ["lactate"],
     "left ventricular ejection fraction": ["lvef", "ef", "ejection fraction", "left ventricular ejection fraction"],
     "lvef": ["lvef", "ef", "ejection fraction", "left ventricular ejection fraction"],
-    "magnesium": ["magnesium", "mag"],
+    "ph": ["ph", "blood ph", "abg ph", "arterial ph"],
+    "pao2": ["pao2", "arterial oxygen partial pressure", "partial pressure of oxygen"],
+    "arterial oxygen partial pressure": ["pao2", "arterial oxygen partial pressure", "partial pressure of oxygen"],
     "pco2": ["pco2", "co2"],
     "phosphorus": ["phosphorus", "phos"],
     "platelet": ["plt", "platelet", "platelets"],
     "platelets": ["plt", "platelet", "platelets"],
     "plt": ["plt", "platelet", "platelets"],
     "potassium": ["potassium", "k"],
+    "procalcitonin": ["procalcitonin", "pct"],
     "partial thromboplastin time": ["ptt", "partial thromboplastin time", "activated partial thromboplastin time"],
     "prothrombin time": ["pt", "prothrombin time"],
     "pt": ["pt", "prothrombin time"],
     "ptt": ["ptt", "partial thromboplastin time", "activated partial thromboplastin time"],
+    "temperature": ["temperature", "temp"],
+    "temp": ["temperature", "temp"],
     "respiratory rate": ["rr", "respiratory rate"],
     "rr": ["rr", "respiratory rate"],
     "sao2": ["sao2", "spo2", "o2 sat"],
     "na": ["na", "sodium"],
     "o2 sat": ["o2 sat", "oxygen saturation", "spo2", "sao2"],
+    "o2 saturation": ["o2 saturation", "o2 sat", "oxygen saturation", "spo2", "sao2"],
     "oxygen saturation": ["o2 sat", "oxygen saturation", "spo2", "sao2"],
+    "peripheral oxygen saturation": ["o2 saturation", "o2 sat", "oxygen saturation", "spo2", "sao2"],
     "sodium": ["sodium", "na"],
     "spo2": ["spo2", "sao2", "o2 sat"],
+    "troponin": ["troponin", "troponin t", "troponin i"],
     "wbc": ["wbc", "white blood cell count"],
     "white blood cell count": ["wbc", "white blood cell count"],
 }
 
 UNIT_PATTERN = (
-    r"%|mg/dl|mmol/l|meq/l|k/u?l|x10\^?3|g/dl|sec|secs|bpm|mmhg|mm hg|"
-    r"cmh2o|iu|u/l|ng/ml|mcg/ml|pg/ml|mg/hr|insp/min|/min"
+    r"%|percent|mg/dl|mg/l(?:\s*feu)?|mmol/l|meq/l|k/u?l|cells/u?l|x10\^?3|x10\^?9/l|10\^?9/l|g/dl|gm/dl|g/l|"
+    r"beats?/min(?:ute)?|breaths?/min(?:ute)?|ratio|p?h|degrees?\s*c|deg(?:ree)?s?\s*c|°\s*c|"
+    r"u/ml|units/ml|"
+    r"seconds?|secs|sec|bpm|mmhg|mm hg|cmh2o|iu|u/l|ng/ml|mcg/ml|pg/ml|mg/hr|insp/min|/min|per[_ ]?min"
 )
-NUMERIC_VALUE_PATTERN = r"\d+(?:\.\d+)?(?:'?s)?(?:\s*-\s*\d+(?:\.\d+)?(?:'?s)?)?(?:/\d+(?:\.\d+)?(?:\(\d+\))?)?"
-SIMPLE_NUMERIC_VALUE_PATTERN = r"\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?"
+NUMERIC_TOKEN_PATTERN = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+RANGE_SEPARATOR_PATTERN = r"(?:-|\u2013|\u2014|to)"
+NUMERIC_VALUE_PATTERN = rf"{NUMERIC_TOKEN_PATTERN}(?:'?s)?(?:\s*{RANGE_SEPARATOR_PATTERN}\s*{NUMERIC_TOKEN_PATTERN}(?:'?s)?)?(?:/{NUMERIC_TOKEN_PATTERN}(?:\({NUMERIC_TOKEN_PATTERN}\))?)?"
+SIMPLE_NUMERIC_VALUE_PATTERN = rf"{NUMERIC_TOKEN_PATTERN}(?:\s*{RANGE_SEPARATOR_PATTERN}\s*{NUMERIC_TOKEN_PATTERN})?"
+LAB_INLINE_STATUS_PATTERN = r"(?:\s*(?:\(\s*[HLAN]\s*\)|\b(?:high|low|normal|abnormal|elevated|increased|decreased|reduced|depressed|positive|negative|H|L)\b))?"
+REFERENCE_RANGE_CUE_PATTERN = r"(?:ref(?:erence)?\s*range|normal\s*range)"
 
 
 def parse_args() -> argparse.Namespace:
@@ -768,7 +797,9 @@ LOW_VALUE_ASSERTION_PATTERNS = [
     re.compile(r"^(?:normal|abnormal|positive|negative)$", re.I),
     re.compile(r"^(?:moves?|moving|movement)$", re.I),
 ]
-PAST_HISTORY_SECTION = re.compile(r"\b(past medical history|past surgical history|pmh|pmhx|psh)\b", re.I)
+PAST_HISTORY_SECTION = re.compile(r"\b(past medical history|past surgical history|past history|pmh|pmhx|psh|medical history)\b", re.I)
+FAMILY_HISTORY_SECTION = re.compile(r"\b(family history|fhx|family hx)\b", re.I)
+SOCIAL_HISTORY_SECTION = re.compile(r"\b(social history|social hx)\b", re.I)
 CURRENT_EVENT_SECTION = re.compile(
     r"\b(history of present illness|hpi|chief complaint|brief hospital course|hospital course|"
     r"pertinent results?|imaging|physical exam|discharge diagnoses?|diagnosis)\b",
@@ -909,6 +940,27 @@ def has_overlay_possible(text: str, span: str) -> bool:
     )
 
 
+def has_span_historical_cue(span: str) -> bool:
+    span_text = clean(span)
+    return bool(
+        re.search(
+            r"^(?:history of|history includes|h/o|hx of|former|prior|remote|past|previous|status post|s/p)\b",
+            span_text,
+            re.I,
+        )
+        or re.search(r"\bformer smoker\b", span_text, re.I)
+    )
+
+
+def has_preceding_conditional_cue(text: str, span: str) -> bool:
+    positions = span_positions(text, span)
+    if not positions:
+        return bool(CONDITIONAL_CUE.search(text))
+    start, _ = positions[0]
+    prefix = same_clause_before(text[max(0, start - 180) : start])
+    return bool(CONDITIONAL_CUE.search(prefix))
+
+
 def has_overlay_hypothetical(text: str, span: str) -> bool:
     before = window_before(text, span, 180)
     after = window_after(text, span, 130)
@@ -944,21 +996,25 @@ def has_close_history_cue(text: str, span: str) -> bool:
 
 
 def has_overlay_historical(text: str, section: str, span: str) -> bool:
-    if PAST_HISTORY_SECTION.search(section or ""):
+    if (
+        PAST_HISTORY_SECTION.search(section or "")
+        or FAMILY_HISTORY_SECTION.search(section or "")
+    ):
+        return True
+    if has_span_historical_cue(span):
         return True
     before = window_before(text, span, 190)
     after = window_after(text, span, 100)
     return any_window_has(
         before,
         [
-            r"\b(?:history of|h/o|hx of|hx)\b",
+            r"\b(?:history of|history includes|h/o|hx of|hx)\b",
             r"\b(?:past|prior|previous|remote|old)\b",
             r"\bstatus post\b",
             r"\bs/p\b",
-            r"\bknown\b",
-            r"\blongstanding\b",
             r"\bhome (?:meds|medications?) include\b",
             r"\bpreviously (?:diagnosed|treated)\b",
+            r"\b(?:family history|fhx|family hx)\b",
         ],
     ) or any_window_has(after, [r"\b(?:in the past|previously|prior to admission)\b"])
 
@@ -1011,20 +1067,76 @@ def infer_assertion_preview(
 ) -> str:
     if action == "value_parse":
         return "not_applicable"
-    text = overlay_text(sentence, evidence_context)
-    if has_overlay_conditional(text, span) or has_scoped_conditional(sentence, span):
-        return "conditional"
+    text = clean(sentence)
     if has_overlay_negation(text, span) or has_scoped_negation(sentence, span):
         return "absent"
+    if has_span_historical_cue(span):
+        return "historical"
+    if has_overlay_historical(text, section, span):
+        return "historical"
+    if has_overlay_conditional(text, span) or has_scoped_conditional(sentence, span):
+        return "conditional"
     if has_overlay_possible(text, span) or has_scoped_possible(sentence, span):
         return "possible"
     if has_overlay_hypothetical(text, span) or has_scoped_hypothetical(sentence, span):
         return "hypothetical"
     if has_overlay_current_event(text, section, span):
         return "present"
-    if has_overlay_historical(text, section, span):
-        return "historical"
     return "present"
+
+
+def refine_assertion_preview(
+    sentence: str,
+    section: str,
+    action: str,
+    span: str = "",
+    evidence_context: str = "",
+    concept_category: str = "",
+    initial_assertion: str | None = None,
+) -> tuple[str, bool, list[str]]:
+    """Apply a second local-scope pass to catch conditional leakage.
+
+    The first pass is intentionally permissive so we do not miss genuine
+    conditional targets. This second pass keeps conditional only when the cue
+    is still anchored to the target span after the local scope check.
+    """
+
+    if action == "value_parse":
+        return "not_applicable", False, ["value_parse"]
+
+    raw_assertion = initial_assertion
+    if raw_assertion is None:
+        raw_assertion = infer_assertion_preview(
+            sentence,
+            section,
+            action,
+            span,
+            evidence_context,
+            concept_category,
+        )
+
+    if raw_assertion != "conditional":
+        return raw_assertion, False, []
+
+    # Keep the second pass sentence-local so later-section cues do not leak
+    # backward into an earlier target span.
+    text = clean(sentence)
+    if has_scoped_possible(text, span) and not has_preceding_conditional_cue(text, span):
+        return "possible", True, ["conditional_post_judge_to_possible"]
+    if has_scoped_hypothetical(text, span) and not has_preceding_conditional_cue(text, span):
+        return "hypothetical", True, ["conditional_post_judge_to_hypothetical"]
+    if has_scoped_conditional(text, span):
+        return "conditional", False, ["conditional_scope_confirmed"]
+
+    if has_scoped_negation(text, span):
+        return "absent", True, ["conditional_post_judge_to_absent"]
+    if has_scoped_possible(text, span):
+        return "possible", True, ["conditional_post_judge_to_possible"]
+    if has_overlay_current_event(text, section, span):
+        return "present", True, ["conditional_post_judge_to_present"]
+    if has_overlay_historical(text, section, span):
+        return "historical", True, ["conditional_post_judge_to_historical"]
+    return "present", True, ["conditional_post_judge_to_present_default"]
 
 
 def infer_temporality_preview(sentence: str, section: str, span: str = "") -> str:
@@ -1119,6 +1231,356 @@ def normalize_lab_value_span(span: str, start: int, end: int) -> tuple[str, int,
     return raw[:alias_len], start, start + alias_len, alias
 
 
+def normalize_numeric_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = clean(str(value))
+    normalized = re.sub(r"(?<=\d),(?=\d{3}\b)", "", normalized)
+    normalized = re.sub(r"\s*(?:\u2013|\u2014|-)\s*", "-", normalized)
+    normalized = re.sub(r"\s*/\s*", "/", normalized)
+    return normalized
+
+
+def normalize_value_status_text(text: str) -> str:
+    cleaned = clean(text)
+    cleaned = re.sub(r"\b(?:high|low)[ -]?flow\b", "flow", cleaned, flags=re.I)
+    return cleaned
+
+
+def numeric_scalar(value: str | None) -> float | None:
+    normalized = normalize_numeric_value(value)
+    if not normalized:
+        return None
+    normalized = re.sub(r"^(?:<=|>=|<|>|~)\s*", "", normalized)
+    if "/" in normalized or "-" in normalized:
+        return None
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
+def numeric_range_bounds(low: str | None, high: str | None) -> tuple[float, float] | None:
+    low_value = numeric_scalar(low)
+    high_value = numeric_scalar(high)
+    if low_value is None or high_value is None:
+        return None
+    if low_value > high_value:
+        low_value, high_value = high_value, low_value
+    return low_value, high_value
+
+
+def infer_inline_value_status(text: str) -> str | None:
+    lower = normalize_value_status_text(text).lower()
+    if re.search(r"\(\s*h\s*\)|(?:^|[\s:;,\(])h(?:$|[\s\).,;])|\b(?:high|elevated|increased)\b", lower):
+        return "high"
+    if re.search(r"\(\s*l\s*\)|(?:^|[\s:;,\(])l(?:$|[\s\).,;])|\b(?:low|decreased|reduced|depressed)\b", lower):
+        return "low"
+    if re.search(r"\(\s*n\s*\)|\b(?:normal|within normal limits|wnl)\b", lower):
+        return "normal"
+    if re.search(r"\(\s*a\s*\)|\babnormal\b", lower):
+        return "abnormal"
+    if re.search(r"\bpositive\b", lower):
+        return "positive"
+    if re.search(r"\bnegative\b", lower):
+        return "negative"
+    return None
+
+
+def status_from_reference_bounds(value: str | None, low: str | None, high: str | None) -> str | None:
+    scalar = numeric_scalar(value)
+    bounds = numeric_range_bounds(low, high)
+    if scalar is None or bounds is None:
+        return None
+    low_value, high_value = bounds
+    if scalar < low_value:
+        return "low"
+    if scalar > high_value:
+        return "high"
+    return "normal"
+
+
+def infer_reference_range_status_near_value(
+    context: str,
+    numeric_value: str | None,
+    start: int | None,
+    end: int | None,
+) -> str | None:
+    if numeric_value is None or start is None or end is None:
+        return None
+    left = max(0, start - 130)
+    local = context[left : min(len(context), end + 170)]
+    value_mid = ((start + end) / 2) - left
+    pattern = re.compile(
+        rf"(?i)\b{REFERENCE_RANGE_CUE_PATTERN}\b\s*[:=]?\s*"
+        rf"(?P<low>{NUMERIC_TOKEN_PATTERN})\s*{RANGE_SEPARATOR_PATTERN}\s*"
+        rf"(?P<high>{NUMERIC_TOKEN_PATTERN})"
+    )
+    matches = sorted(pattern.finditer(local), key=lambda match: min(abs(match.start() - value_mid), abs(match.end() - value_mid)))
+    for match in matches:
+        status = status_from_reference_bounds(numeric_value, match.group("low"), match.group("high"))
+        if status:
+            return status
+    return None
+
+
+def infer_threshold_value_status(span: str, pretty_name: str, numeric_value: str | None) -> str | None:
+    aliases = set(aliases_for_lab(span, pretty_name))
+    scalar = numeric_scalar(numeric_value)
+    if aliases & {"temperature", "temp"} and scalar is not None:
+        if scalar < 36:
+            return "low"
+        if scalar >= 38:
+            return "high"
+        return "normal"
+    if aliases & {"ph", "blood ph", "abg ph", "arterial ph"} and scalar is not None:
+        if scalar < 7.35:
+            return "low"
+        if scalar > 7.45:
+            return "high"
+        return "normal"
+    if aliases & {"anc", "absolute neutrophil count", "neutrophil count"} and scalar is not None:
+        if scalar < 1.5:
+            return "low"
+        if scalar > 7.5:
+            return "high"
+        return "normal"
+    if aliases & {"na", "sodium"} and scalar is not None:
+        if scalar < 135:
+            return "low"
+        if scalar > 145:
+            return "high"
+        return "normal"
+    if aliases & {"potassium", "k"} and scalar is not None:
+        if scalar < 3.5:
+            return "low"
+        if scalar > 5.1:
+            return "high"
+        return "normal"
+    if aliases & {"wbc", "white blood cell count"} and scalar is not None:
+        if scalar < 4.0:
+            return "low"
+        if scalar > 10.5:
+            return "high"
+        return "normal"
+    if aliases & {"platelet", "platelets", "plt"} and scalar is not None:
+        if scalar < 150:
+            return "low"
+        if scalar > 450:
+            return "high"
+        return "normal"
+    if aliases & {"hemoglobin", "hgb"} and scalar is not None:
+        if scalar < 12.0:
+            return "low"
+        if scalar > 17.0:
+            return "high"
+        return "normal"
+    if aliases & {"hematocrit", "hct"} and scalar is not None:
+        if scalar < 36.0:
+            return "low"
+        if scalar > 52.0:
+            return "high"
+        return "normal"
+    if aliases & {"bnp", "brain natriuretic peptide", "b-type natriuretic peptide"} and scalar is not None:
+        if scalar > 100:
+            return "high"
+        return "normal"
+    if aliases & {"troponin", "troponin t", "troponin i"} and scalar is not None:
+        if scalar > 0.04:
+            return "high"
+        return "normal"
+    if aliases & {"creatinine", "cr"} and scalar is not None:
+        if scalar > 1.3:
+            return "high"
+        return "normal"
+    if aliases & {"glucose", "fingerstick glucose", "fs glucose"} and scalar is not None:
+        if scalar < 70:
+            return "low"
+        if scalar > 180:
+            return "high"
+        return "normal"
+    if aliases & {"bun", "urea"} and scalar is not None:
+        if scalar > 20:
+            return "high"
+        return "normal"
+    if aliases & {"calcium"} and scalar is not None:
+        if scalar < 8.5:
+            return "low"
+        if scalar > 10.5:
+            return "high"
+        return "normal"
+    if aliases & {"magnesium", "mag"} and scalar is not None:
+        if scalar < 1.6:
+            return "low"
+        if scalar > 2.6:
+            return "high"
+        return "normal"
+    if aliases & {"phosphorus", "phos"} and scalar is not None:
+        if scalar < 2.5:
+            return "low"
+        if scalar > 4.5:
+            return "high"
+        return "normal"
+    if aliases & {"lactate"} and scalar is not None:
+        if scalar > 2.0:
+            return "high"
+        return "normal"
+    if aliases & {"albumin"} and scalar is not None:
+        if scalar < 3.5:
+            return "low"
+        if scalar > 5.0:
+            return "high"
+        return "normal"
+    if aliases & {"alt", "alanine aminotransferase", "ast", "aspartate aminotransferase"} and scalar is not None:
+        if scalar > 40:
+            return "high"
+        return "normal"
+    if aliases & {"alkphos", "alk phos", "alkaline phosphatase"} and scalar is not None:
+        if scalar > 120:
+            return "high"
+        return "normal"
+    if aliases & {"bilirubin", "t bili", "tbili", "total bilirubin"} and scalar is not None:
+        if scalar > 1.2:
+            return "high"
+        return "normal"
+    if aliases & {"bicarbonate", "bicarb", "hco3", "co2"} and scalar is not None:
+        if scalar < 22:
+            return "low"
+        if scalar > 29:
+            return "high"
+        return "normal"
+    if aliases & {"crp", "c reactive protein", "c-reactive protein"} and scalar is not None:
+        if scalar > 3:
+            return "high"
+        return "normal"
+    if aliases & {"d-dimer", "ddimer", "d dimer"} and scalar is not None:
+        if scalar > 0.5:
+            return "high"
+        return "normal"
+    if aliases & {"ldh", "lactate dehydrogenase", "l-lactate dehydrogenase"} and scalar is not None:
+        if scalar > 250:
+            return "high"
+        return "normal"
+    if aliases & {"procalcitonin", "pct"} and scalar is not None:
+        if scalar >= 0.25:
+            return "high"
+        return "normal"
+    if aliases & {"ca 19-9", "ca19-9", "cancer antigen 19-9", "carbohydrate antigen 19-9"} and scalar is not None:
+        if scalar > 37:
+            return "high"
+        return "normal"
+    if aliases & {"pt", "prothrombin time"} and scalar is not None:
+        if scalar > 13.5:
+            return "high"
+        return "normal"
+    if aliases & {"ptt", "partial thromboplastin time", "activated partial thromboplastin time"} and scalar is not None:
+        if scalar > 35:
+            return "high"
+        return "normal"
+    if aliases & {"inr", "international normalized ratio"} and scalar is not None:
+        if scalar > 1.2:
+            return "high"
+        return "normal"
+    if aliases & {"rr", "respiratory rate"} and scalar is not None:
+        if scalar >= 21:
+            return "high"
+        if scalar <= 11:
+            return "low"
+        return "normal"
+    if aliases & {"hr", "heart rate"} and scalar is not None:
+        if scalar >= 100:
+            return "high"
+        if scalar <= 50:
+            return "low"
+        if 60 <= scalar <= 100:
+            return "normal"
+    if aliases & {"spo2", "sao2", "o2 sat", "o2 saturation", "oxygen saturation", "peripheral oxygen saturation"} and scalar is not None:
+        if scalar <= 93:
+            return "low"
+        if 94 <= scalar <= 100:
+            return "normal"
+    if aliases & {"pao2", "arterial oxygen partial pressure", "partial pressure of oxygen"} and scalar is not None:
+        if scalar < 80:
+            return "low"
+        if scalar <= 100:
+            return "normal"
+        return "high"
+    if aliases & {"ef", "lvef", "ejection fraction", "left ventricular ejection fraction"} and scalar is not None:
+        if scalar < 50:
+            return "low"
+        return "normal"
+    if aliases & {"bp", "blood pressure"}:
+        value = normalize_numeric_value(numeric_value) or ""
+        bp_match = re.match(r"(?P<sys>\d{2,3})/(?P<dia>\d{2,3})", value)
+        if bp_match:
+            systolic = float(bp_match.group("sys"))
+            diastolic = float(bp_match.group("dia"))
+            if systolic < 100 or diastolic <= 60:
+                return "low"
+            if systolic >= 140 or diastolic >= 90:
+                return "high"
+            return "normal"
+    return None
+
+
+def infer_adjacent_value_status(context: str, start: int | None, end: int | None) -> str | None:
+    if start is None or end is None:
+        return None
+    suffix = context[end : min(len(context), end + 28)]
+    suffix = re.split(r"[;\n]|\b(?:and|or)\b", suffix, maxsplit=1, flags=re.I)[0]
+    if not re.match(
+        r"^\s*(?:\(\s*[HLAN]\s*\)|\b(?:high|low|normal|abnormal|elevated|increased|decreased|reduced|depressed|positive|negative)\b)",
+        suffix,
+        re.I,
+    ):
+        return None
+    return infer_inline_value_status(suffix)
+
+
+def threshold_unit_is_compatible(span: str, pretty_name: str, matched_text: str) -> bool:
+    aliases = set(aliases_for_lab(span, pretty_name))
+    unit_match = re.search(rf"(?i)(?:^|\s)(?P<unit>{UNIT_PATTERN})(?=$|[\s(),;])", matched_text)
+    if not unit_match:
+        return False
+    unit = norm_key(unit_match.group("unit"))
+    if aliases & {"na", "sodium", "potassium", "k"}:
+        return unit in {"mmol/l", "meq/l"}
+    if aliases & {"wbc", "white blood cell count", "anc", "absolute neutrophil count", "neutrophil count", "platelet", "platelets", "plt"}:
+        return unit in {"k/ul", "k/l", "cells/ul", "x10^3", "x10^9/l", "10^9/l"}
+    if aliases & {"hemoglobin", "hgb", "hematocrit", "hct", "albumin"}:
+        return unit in {"g/dl", "gm/dl", "g/l", "%", "percent"}
+    if aliases & {"pt", "prothrombin time", "ptt", "partial thromboplastin time", "activated partial thromboplastin time"}:
+        return unit in {"s", "sec", "secs", "second", "seconds"}
+    if aliases & {"inr", "international normalized ratio"}:
+        return unit == "ratio"
+    if aliases & {"temperature", "temp"}:
+        return unit in {"degrees c", "degree c", "degrees f", "degree f", "c", "f", "celsius", "fahrenheit"}
+    if aliases & {"hr", "heart rate"}:
+        return unit in {"bpm", "beat/min", "beats/min", "beat/minute", "beats/minute"}
+    if aliases & {"rr", "respiratory rate"}:
+        return unit in {"breath/min", "breaths/min", "breath/minute", "breaths/minute", "/min"}
+    if aliases & {"bp", "blood pressure", "pao2", "arterial oxygen partial pressure", "partial pressure of oxygen"}:
+        return unit in {"mmhg", "mm hg"}
+    if aliases & {"spo2", "sao2", "o2 sat", "o2 saturation", "oxygen saturation", "peripheral oxygen saturation", "ef", "lvef", "ejection fraction", "left ventricular ejection fraction"}:
+        return unit in {"%", "percent"}
+    return True
+
+
+def preserve_numeric_qualifier(value_parse: dict[str, Any]) -> dict[str, Any]:
+    value = normalize_numeric_value(value_parse.get("numeric_value"))
+    if not value:
+        return value_parse
+    comparator = clean(str(value_parse.get("comparator") or ""))
+    if comparator and not value.startswith(comparator):
+        value = f"{comparator}{value}"
+    elif not re.match(r"^(?:<=|>=|<|>|~)", value):
+        value_text = str(value_parse.get("value_text") or "")
+        if re.search(rf"~\s*{re.escape(value)}\b", value_text):
+            value = f"~{value}"
+    value_parse["numeric_value"] = value
+    return value_parse
+
+
 def infer_value_status_from_match(
     span: str,
     pretty_name: str,
@@ -1128,26 +1590,22 @@ def infer_value_status_from_match(
     end: int | None,
     numeric_value: str | None = None,
 ) -> str:
-    match_status = infer_value_status(text)
-    if match_status != "unknown":
-        return match_status
-    if re.search(r"\bstable\b", text, re.I):
-        return "normal"
-    alias = leading_lab_alias(span) or leading_lab_alias(pretty_name) or norm_key(pretty_name)
-    if numeric_value is not None and alias in {"rr", "respiratory rate"}:
-        try:
-            rr_value = float(str(numeric_value).split("/")[0])
-        except ValueError:
-            rr_value = None
-        if rr_value is not None:
-            if rr_value >= 21:
-                return "high"
-            if rr_value <= 11:
-                return "low"
-            return "normal"
-    local_status = infer_local_value_status(context, start, end)
-    if local_status != "unknown" and re.search(r"\b(?:high|elevated|increased|low|decreased|reduced|depressed|normal|abnormal|positive|negative)\b", context[max(0, (start or 0) - 15) : min(len(context), (end or 0) + 35)], re.I):
-        return local_status
+    text = normalize_value_status_text(text)
+    context = normalize_value_status_text(context)
+    inline_status = infer_inline_value_status(text)
+    if inline_status:
+        return inline_status
+    adjacent_status = infer_adjacent_value_status(context, start, end)
+    if adjacent_status:
+        return adjacent_status
+    if re.search(rf"\b{REFERENCE_RANGE_CUE_PATTERN}\b", text, re.I):
+        reference_status = infer_reference_range_status_near_value(text, numeric_value, 0, len(text))
+        if reference_status:
+            return reference_status
+    if threshold_unit_is_compatible(span, pretty_name, text):
+        threshold_status = infer_threshold_value_status(span, pretty_name, numeric_value)
+        if threshold_status:
+            return threshold_status
     return "unknown"
 
 
@@ -1269,15 +1727,15 @@ def maybe_numeric_from_vital_table(span: str, pretty_name: str, context: str, st
         return None
     if target_alias == "hr":
         value = row.group("hr")
-        unit = "bpm"
+        unit = "beats/min"
         label = "HR"
     elif target_alias == "bp":
         value = row.group("bp")
-        unit = "mm Hg"
+        unit = "mmHg"
         label = "BP"
     elif target_alias == "rr" and "rr" in row.groupdict():
         value = row.group("rr")
-        unit = "/min"
+        unit = "breaths/min"
         label = "RR"
     elif target_alias in {"spo2", "sao2", "o2 sat"} and "spo2" in row.groupdict():
         value = row.group("spo2")
@@ -1287,18 +1745,21 @@ def maybe_numeric_from_vital_table(span: str, pretty_name: str, context: str, st
         return None
     if not value:
         return None
+    value = normalize_numeric_value(value)
+    value_text = f"{label}={value}" + (f" {unit}" if unit else "")
     return {
         "numeric_value": value,
         "unit": unit,
         "comparator": None,
-        "value_text": f"{label}={value}" + (f" {unit}" if unit else ""),
-        "value_status": infer_local_value_status(context, start, end),
+        "value_text": value_text,
+        "value_status": infer_value_status_from_match(span, pretty_name, value_text, context, start, end, value),
         "value_parse_method": "vital_table_position_row_regex",
         "measurement_context": "observed_patient",
     }
 
 
-def default_unit_for_lab(aliases: set[str]) -> str | None:
+def default_unit_for_lab(aliases: Iterable[str]) -> str | None:
+    aliases = set(aliases)
     if aliases & {"na", "sodium"}:
         return "mmol/L"
     if aliases & {"wbc", "white blood cell count"}:
@@ -1306,15 +1767,113 @@ def default_unit_for_lab(aliases: set[str]) -> str | None:
     if aliases & {"bnp", "brain natriuretic peptide", "b-type natriuretic peptide"}:
         return "pg/mL"
     if aliases & {"hr", "heart rate"}:
-        return "bpm"
-    if aliases & {"bp", "blood pressure"}:
-        return "mm Hg"
+        return "beats/min"
     if aliases & {"rr", "respiratory rate"}:
-        return "/min"
-    if aliases & {"spo2", "sao2", "o2 sat"}:
+        return "breaths/min"
+    if aliases & {"bp", "blood pressure"}:
+        return "mmHg"
+    if aliases & {"spo2", "sao2", "o2 sat", "o2 saturation", "oxygen saturation", "peripheral oxygen saturation"}:
         return "%"
     if aliases & {"ef", "lvef", "ejection fraction", "left ventricular ejection fraction"}:
         return "%"
+    if aliases & {"inr", "international normalized ratio"}:
+        return "ratio"
+    if aliases & {"pt", "prothrombin time", "ptt", "partial thromboplastin time", "activated partial thromboplastin time"}:
+        return "sec"
+    if aliases & {"temperature", "temp"}:
+        return "degrees C"
+    if aliases & {"ph", "blood ph", "abg ph", "arterial ph"}:
+        return "pH"
+    if aliases & {"pao2", "arterial oxygen partial pressure", "partial pressure of oxygen"}:
+        return "mmHg"
+    if aliases & {"ca 19-9", "ca19-9", "cancer antigen 19-9", "carbohydrate antigen 19-9"}:
+        return "U/mL"
+    if aliases & {"creatinine", "cr"}:
+        return "mg/dL"
+    if aliases & {"troponin", "troponin t", "troponin i"}:
+        return "ng/mL"
+    if aliases & {"glucose", "fingerstick glucose", "fs glucose"}:
+        return "mg/dL"
+    if aliases & {"bun", "urea"}:
+        return "mg/dL"
+    if aliases & {"calcium"}:
+        return "mg/dL"
+    if aliases & {"magnesium", "mag"}:
+        return "mg/dL"
+    if aliases & {"phosphorus", "phos"}:
+        return "mg/dL"
+    if aliases & {"lactate"}:
+        return "mmol/L"
+    if aliases & {"albumin"}:
+        return "g/dL"
+    if aliases & {"alanine aminotransferase", "alt", "aspartate aminotransferase", "ast", "alkphos", "alk phos", "alkaline phosphatase", "ldh"}:
+        return "U/L"
+    if aliases & {"bilirubin", "t bili", "tbili", "total bilirubin"}:
+        return "mg/dL"
+    if aliases & {"crp"}:
+        return "mg/L"
+    if aliases & {"d-dimer", "ddimer", "d dimer"}:
+        return "mg/L FEU"
+    return None
+
+
+def maybe_numeric_from_reference_range_row(
+    span: str,
+    pretty_name: str,
+    context: str,
+    start: int | None,
+    end: int | None,
+) -> dict[str, Any] | None:
+    aliases = aliases_for_lab(span, pretty_name)
+    alias_set = set(aliases)
+    local_context, local_start, local_end = local_span_slice(context, start, end, before=35, after=220)
+    patterns = []
+    for alias in aliases:
+        escaped = re.escape(alias)
+        name_boundary = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
+        patterns.extend(
+            [
+                re.compile(
+                    rf"(?i){name_boundary}[^.\n]{{0,90}}\b{REFERENCE_RANGE_CUE_PATTERN}\b\s*[:=]?\s*"
+                    rf"(?P<low>{NUMERIC_TOKEN_PATTERN})\s*{RANGE_SEPARATOR_PATTERN}\s*"
+                    rf"(?P<high>{NUMERIC_TOKEN_PATTERN})\s*(?P<range_unit>{UNIT_PATTERN})?"
+                    rf"[^.\n\d]{{0,45}}(?:;|,|\bresult\b|\bvalue\b|\bactual\b)[^.\n\d]{{0,45}}"
+                    rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_TOKEN_PATTERN})\s*(?P<unit>{UNIT_PATTERN})?"
+                    rf"{LAB_INLINE_STATUS_PATTERN}"
+                ),
+                re.compile(
+                    rf"(?i){name_boundary}\s*(?:\([^)]{{0,30}}\))?\s*(?:[:=,\-]|\bof\b)?\s*"
+                    rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_TOKEN_PATTERN})(?!\s*{RANGE_SEPARATOR_PATTERN})\s*"
+                    rf"(?P<unit>{UNIT_PATTERN})?{LAB_INLINE_STATUS_PATTERN}"
+                    rf"[^.\n]{{0,100}}\b{REFERENCE_RANGE_CUE_PATTERN}\b\s*[:=]?\s*"
+                    rf"(?P<low>{NUMERIC_TOKEN_PATTERN})\s*{RANGE_SEPARATOR_PATTERN}\s*"
+                    rf"(?P<high>{NUMERIC_TOKEN_PATTERN})\s*(?P<range_unit>{UNIT_PATTERN})?"
+                ),
+            ]
+        )
+    all_matches: list[re.Match[str]] = []
+    for pattern in patterns:
+        all_matches.extend(pattern.finditer(local_context))
+    matches = [
+        match
+        for match in sort_matches_by_locality(all_matches, local_start, local_end)
+        if match_anchored_to_span(match, local_start, local_end, tolerance=8)
+    ]
+    for match in matches:
+        value = normalize_numeric_value(match.group("value"))
+        inline_status = infer_inline_value_status(match.group(0))
+        status = inline_status or status_from_reference_bounds(value, match.group("low"), match.group("high"))
+        status = status or infer_threshold_value_status(span, pretty_name, value) or "unknown"
+        unit = clean(match.group("unit") or match.group("range_unit") or "") or default_unit_for_lab(alias_set)
+        return {
+            "numeric_value": value,
+            "unit": unit,
+            "comparator": match.group("comparator"),
+            "value_text": clean(match.group(0)),
+            "value_status": status,
+            "value_parse_method": "reference_range_result_regex",
+            "measurement_context": infer_measurement_context(span, pretty_name, local_context, match.start("value"), match.end("value")),
+        }
     return None
 
 
@@ -1329,6 +1888,7 @@ def maybe_numeric_from_approx_phrase(span: str, pretty_name: str, context: str, 
             rf"(?i){name_boundary}"
             rf"(?P<bridge>[^.\n;\d<>]{{0,55}}\b(?:to|at|up to|down to|high at|low at|elevated to|increased to|decreased to|reduced to|dropped to|rose to|stable at|ranged? to|as high as|as low as|in the|(?:back\s+)?into)\b[^.\n;\d<>]{{0,20}})"
             rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*(?P<unit>{UNIT_PATTERN})?"
+            rf"{LAB_INLINE_STATUS_PATTERN}"
         )
         matches = [
             match
@@ -1339,15 +1899,92 @@ def maybe_numeric_from_approx_phrase(span: str, pretty_name: str, context: str, 
             bridge = match.group("bridge") or ""
             if len(bridge) > 55:
                 continue
+            value = normalize_numeric_value(match.group("value"))
             return {
-                "numeric_value": match.group("value"),
+                "numeric_value": value,
                 "unit": clean(match.group("unit") or "") or default_unit_for_lab(alias_set),
                 "comparator": match.group("comparator"),
                 "value_text": clean(match.group(0)),
-                "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start(), match.end(), match.group("value")),
+                "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start(), match.end(), value),
                 "value_parse_method": "approximate_or_range_phrase_regex",
                 "measurement_context": "observed_patient",
             }
+    return None
+
+
+def maybe_numeric_from_trend_phrase(span: str, pretty_name: str, context: str, start: int | None, end: int | None) -> dict[str, Any] | None:
+    aliases = aliases_for_lab(span, pretty_name)
+    alias_set = set(aliases)
+    local_context, local_start, local_end = local_span_slice(context, start, end, before=35, after=130)
+    for alias in aliases:
+        escaped = re.escape(alias)
+        name_boundary = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
+        pattern = re.compile(
+            rf"(?i){name_boundary}\s+"
+            rf"(?:improved|improving|decreased|dropped|fell|increased|rose|worsened|changed|trended|went)?\s*"
+            rf"(?:from\s+)?(?P<from_value>{NUMERIC_VALUE_PATTERN})\s*(?P<from_unit>{UNIT_PATTERN})?\s*"
+            rf"(?:to|->|=>|down\s+to|up\s+to|then)\s*"
+            rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*(?P<unit>{UNIT_PATTERN})?"
+            rf"{LAB_INLINE_STATUS_PATTERN}"
+        )
+        matches = [
+            match
+            for match in sort_matches_by_locality(list(pattern.finditer(local_context)), local_start, local_end)
+            if match_anchored_to_span(match, local_start, local_end, tolerance=8)
+        ]
+        for match in matches:
+            value = normalize_numeric_value(match.group("value"))
+            unit = clean(match.group("unit") or match.group("from_unit") or "") or default_unit_for_lab(alias_set)
+            return {
+                "numeric_value": value,
+                "unit": unit,
+                "comparator": match.group("comparator"),
+                "value_text": clean(match.group(0)),
+                "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start("value"), match.end(), value),
+                "value_parse_method": "trend_final_value_regex",
+                "measurement_context": "observed_patient",
+            }
+    return None
+
+
+def maybe_numeric_from_temperature(span: str, pretty_name: str, context: str, start: int | None, end: int | None) -> dict[str, Any] | None:
+    aliases = aliases_for_lab(span, pretty_name)
+    if not set(aliases) & {"temperature", "temp"}:
+        return None
+    local_context, local_start, local_end = local_span_slice(context, start, end, before=35, after=110)
+    patterns = []
+    for alias in aliases:
+        if alias not in {"temperature", "temp"}:
+            continue
+        escaped = re.escape(alias)
+        name_boundary = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
+        patterns.append(
+            re.compile(
+                rf"(?i){name_boundary}\s*(?:\([^)]{{0,30}}\))?\s*(?:[:=,\-]|\bof\b)?\s*"
+                rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*"
+                rf"(?P<unit>°?\s*[CF]|deg(?:ree)?s?\s*[CF]|celsius|fahrenheit)?{LAB_INLINE_STATUS_PATTERN}"
+            )
+        )
+    all_matches: list[re.Match[str]] = []
+    for pattern in patterns:
+        all_matches.extend(pattern.finditer(local_context))
+    matches = [
+        match
+        for match in sort_matches_by_locality(all_matches, local_start, local_end)
+        if match_anchored_to_span(match, local_start, local_end, tolerance=8)
+    ]
+    for match in matches:
+        value = normalize_numeric_value(match.group("value"))
+        unit = clean(match.group("unit") or "") or default_unit_for_lab(aliases)
+        return {
+            "numeric_value": value,
+            "unit": unit or None,
+            "comparator": match.group("comparator"),
+            "value_text": clean(match.group(0)),
+            "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start(), match.end(), value),
+            "value_parse_method": "temperature_regex",
+            "measurement_context": "observed_patient",
+        }
     return None
 
 
@@ -1364,31 +2001,32 @@ def parse_coag_panel_value(span: str, pretty_name: str, context: str, start: int
 
     panel_pattern = re.compile(
         rf"(?i)\bpt\s*/\s*ptt\s*/\s*inr\s*[:=]\s*"
-        rf"(?P<pt>{SIMPLE_NUMERIC_VALUE_PATTERN})\s*/\s*"
-        rf"(?P<ptt>{SIMPLE_NUMERIC_VALUE_PATTERN})\s*/\s*"
-        rf"(?P<inr>{SIMPLE_NUMERIC_VALUE_PATTERN})"
+        rf"(?P<pt>{SIMPLE_NUMERIC_VALUE_PATTERN})(?:\s*(?P<pt_unit>seconds?|secs|sec|s))?\s*/\s*"
+        rf"(?P<ptt>{SIMPLE_NUMERIC_VALUE_PATTERN})(?:\s*(?P<ptt_unit>seconds?|secs|sec|s))?\s*/\s*"
+        rf"(?P<inr>{SIMPLE_NUMERIC_VALUE_PATTERN})(?:\s*(?P<inr_unit>ratio))?"
     )
     panel_matches = sort_matches_by_locality(list(panel_pattern.finditer(context)), start, end)
     if panel_matches:
         panel = panel_matches[0]
+        panel_text = clean(panel.group(0))
         if wants_pt:
             label = "PT"
             value = panel.group("pt")
-            unit = "sec"
+            unit = clean(panel.group("pt_unit") or "") or ("seconds" if "seconds" in panel_text.lower() else "sec")
         elif wants_ptt:
             label = "PTT"
             value = panel.group("ptt")
-            unit = "sec"
+            unit = clean(panel.group("ptt_unit") or "") or ("seconds" if "seconds" in panel_text.lower() else "sec")
         else:
             label = "INR"
             value = panel.group("inr")
-            unit = None
+            unit = clean(panel.group("inr_unit") or "") or ("ratio" if "ratio" in panel_text.lower() else None)
         return {
             "numeric_value": value,
             "unit": unit,
             "comparator": None,
             "value_text": f"{label}={value}" + (f" {unit}" if unit else ""),
-            "value_status": infer_local_value_status(context, panel.start(), panel.end()),
+            "value_status": infer_value_status_from_match(span, pretty_name, panel_text, context, panel.start(), panel.end(), value),
             "value_parse_method": "coag_panel_pt_ptt_inr_regex",
             "measurement_context": "observed_patient",
         }
@@ -1396,29 +2034,30 @@ def parse_coag_panel_value(span: str, pretty_name: str, context: str, start: int
     adjacent_panel_pattern = re.compile(
         rf"(?i)\bpt\s*(?:[-:=]|\s)\s*(?P<pt>{SIMPLE_NUMERIC_VALUE_PATTERN})\s+"
         rf"ptt\s*(?:[-:=]|\s)\s*(?P<ptt>{SIMPLE_NUMERIC_VALUE_PATTERN})\s+"
-        rf"(?:inr(?:\s*\(\s*pt\s*\))?)\s*(?:[-:=]|\s)\s*(?P<inr>{SIMPLE_NUMERIC_VALUE_PATTERN})"
+        rf"(?:inr(?:\s*\(\s*pt\s*\))?)\s*(?:[-:=]|\s)\s*(?P<inr>{SIMPLE_NUMERIC_VALUE_PATTERN})(?:\s*(?P<inr_unit>ratio))?"
     )
     adjacent_matches = sort_matches_by_locality(list(adjacent_panel_pattern.finditer(context)), start, end)
     if adjacent_matches:
         panel = adjacent_matches[0]
+        panel_text = clean(panel.group(0))
         if wants_pt:
             label = "PT"
             value = panel.group("pt")
-            unit = "sec"
+            unit = "seconds" if "seconds" in panel_text.lower() else "sec"
         elif wants_ptt:
             label = "PTT"
             value = panel.group("ptt")
-            unit = "sec"
+            unit = "seconds" if "seconds" in panel_text.lower() else "sec"
         else:
             label = "INR"
             value = panel.group("inr")
-            unit = None
+            unit = clean(panel.group("inr_unit") or "") or ("ratio" if "ratio" in panel_text.lower() else None)
         return {
             "numeric_value": value,
             "unit": unit,
             "comparator": None,
             "value_text": f"{label}={value}" + (f" {unit}" if unit else ""),
-            "value_status": infer_local_value_status(context, panel.start(), panel.end()),
+            "value_status": infer_value_status_from_match(span, pretty_name, panel_text, context, panel.start(), panel.end(), value),
             "value_parse_method": "coag_adjacent_pt_ptt_inr_regex",
             "measurement_context": "observed_patient",
         }
@@ -1426,47 +2065,53 @@ def parse_coag_panel_value(span: str, pretty_name: str, context: str, start: int
     narrative_panel_pattern = re.compile(
         rf"(?i)\bpt\s+(?:of\s+)?(?P<pt>{SIMPLE_NUMERIC_VALUE_PATTERN})\s*,?\s+"
         rf"ptt\s+(?:of\s+)?(?P<ptt>{SIMPLE_NUMERIC_VALUE_PATTERN})\s*,?\s+"
-        rf"(?:and\s+)?(?:an?\s+)?inr\s+(?:of\s+)?(?P<inr>{SIMPLE_NUMERIC_VALUE_PATTERN})"
+        rf"(?:and\s+)?(?:an?\s+)?inr\s+(?:of\s+)?(?P<inr>{SIMPLE_NUMERIC_VALUE_PATTERN})(?:\s*(?P<inr_unit>ratio))?"
     )
     narrative_matches = sort_matches_by_locality(list(narrative_panel_pattern.finditer(context)), start, end)
     if narrative_matches:
         panel = narrative_matches[0]
+        panel_text = clean(panel.group(0))
         if wants_pt:
             label = "PT"
             value = panel.group("pt")
-            unit = "sec"
+            unit = "seconds" if "seconds" in panel_text.lower() else "sec"
         elif wants_ptt:
             label = "PTT"
             value = panel.group("ptt")
-            unit = "sec"
+            unit = "seconds" if "seconds" in panel_text.lower() else "sec"
         else:
             label = "INR"
             value = panel.group("inr")
-            unit = None
+            unit = clean(panel.group("inr_unit") or "") or ("ratio" if "ratio" in panel_text.lower() else None)
         return {
             "numeric_value": value,
             "unit": unit,
             "comparator": None,
             "value_text": f"{label}={value}" + (f" {unit}" if unit else ""),
-            "value_status": infer_local_value_status(context, panel.start(), panel.end()),
+            "value_status": infer_value_status_from_match(span, pretty_name, panel_text, context, panel.start(), panel.end(), value),
             "value_parse_method": "coag_narrative_pt_ptt_inr_regex",
             "measurement_context": "observed_patient",
         }
 
     labeled_pattern = re.compile(
         rf"(?i)\b(?P<label>ptt|pt|inr)\s*(?:[-:=]|\s)\s*"
-        rf"(?P<value>{SIMPLE_NUMERIC_VALUE_PATTERN})(?!\s*/)\s*(?P<unit>sec|secs|s)?\b"
+        rf"(?P<value>{SIMPLE_NUMERIC_VALUE_PATTERN})(?!\s*/)\s*(?P<unit>seconds?|secs|sec|s|ratio)?"
+        rf"{LAB_INLINE_STATUS_PATTERN}"
     )
     labeled_matches = sort_matches_by_locality(list(labeled_pattern.finditer(context)), start, end)
     for labeled in labeled_matches:
         label = labeled.group("label").lower()
         if (label == "pt" and wants_pt) or (label == "ptt" and wants_ptt) or (label == "inr" and wants_inr):
+            value = normalize_numeric_value(labeled.group("value"))
+            unit = clean(labeled.group("unit") or "")
+            if not unit:
+                unit = "ratio" if label == "inr" else "sec"
             return {
-                "numeric_value": labeled.group("value"),
-                "unit": clean(labeled.group("unit") or ("sec" if label in {"pt", "ptt"} else "")) or None,
+                "numeric_value": value,
+                "unit": unit,
                 "comparator": None,
                 "value_text": clean(labeled.group(0)),
-                "value_status": infer_local_value_status(context, labeled.start(), labeled.end()),
+                "value_status": infer_value_status_from_match(span, pretty_name, labeled.group(0), context, labeled.start("value"), labeled.end(), value),
                 "value_parse_method": "coag_single_label_regex",
                 "measurement_context": "observed_patient",
             }
@@ -1558,22 +2203,35 @@ def infer_measurement_context(
 
 def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None = None, end: int | None = None) -> dict[str, Any]:
     aliases = aliases_for_lab(span, pretty_name)
+    alias_set = set(aliases)
     local_context, local_start, local_end = local_span_slice(context, start, end)
     coag_value = parse_coag_panel_value(span, pretty_name, local_context, local_start, local_end)
     if coag_value:
-        return coag_value
+        return preserve_numeric_qualifier(coag_value)
 
     slash_panel_value = parse_slash_panel_value(span, pretty_name, local_context, local_start, local_end)
     if slash_panel_value:
-        return slash_panel_value
+        return preserve_numeric_qualifier(slash_panel_value)
 
     table_value = maybe_numeric_from_vital_table(span, pretty_name, context, start, end)
     if table_value:
-        return table_value
+        return preserve_numeric_qualifier(table_value)
+
+    reference_range_value = maybe_numeric_from_reference_range_row(span, pretty_name, context, start, end)
+    if reference_range_value:
+        return preserve_numeric_qualifier(reference_range_value)
+
+    trend_value = maybe_numeric_from_trend_phrase(span, pretty_name, context, start, end)
+    if trend_value:
+        return preserve_numeric_qualifier(trend_value)
 
     approx_value = maybe_numeric_from_approx_phrase(span, pretty_name, context, start, end)
     if approx_value:
-        return approx_value
+        return preserve_numeric_qualifier(approx_value)
+
+    temperature_value = maybe_numeric_from_temperature(span, pretty_name, context, start, end)
+    if temperature_value:
+        return preserve_numeric_qualifier(temperature_value)
 
     for alias in aliases:
         escaped = re.escape(alias)
@@ -1582,9 +2240,10 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
             rf"(?i){name_boundary}\s*(?:\([^)]{{0,30}}\))?\s*(?:[:=,\-]|\bof\b)?\s*"
             rf"(?:is|was|are|were|estimated|approximately|about|around|~|at|"
             rf"stable\s+at|normal\s+at|high\s+at|low\s+at|elevated\s+to|"
-            rf"increased\s+to|decreased\s+to|reduced\s+to|dropped\s+to)?\s*"
+            rf"increased\s+to|decreased\s+to|reduced\s+to|dropped\s+to|"
+            rf"current(?:ly)?|remains?|remained|measures?|measured|reported|returned|noted|revealed|showed|shows|found|result(?:ed)?|level(?:s)?(?:\s+of)?|value(?:d)?(?:\s+at|(?:\s+of)?)?)?\s*"
             rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*"
-            rf"(?P<unit>{UNIT_PATTERN})?"
+            rf"(?P<unit>{UNIT_PATTERN})?{LAB_INLINE_STATUS_PATTERN}(?:\s*(?P<trailing_unit>{UNIT_PATTERN}))?"
         )
         matches = [
             match
@@ -1592,15 +2251,16 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
             if match_anchored_to_span(match, local_start, local_end)
         ]
         for match in matches:
-            return {
-                "numeric_value": match.group("value"),
-                "unit": clean(match.group("unit") or "") or None,
+            value = normalize_numeric_value(match.group("value"))
+            return preserve_numeric_qualifier({
+                "numeric_value": value,
+                "unit": clean(match.group("unit") or match.group("trailing_unit") or "") or default_unit_for_lab(alias_set),
                 "comparator": match.group("comparator"),
                 "value_text": clean(match.group(0)),
-                "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start(), match.end(), match.group("value")),
+                "value_status": infer_value_status_from_match(span, pretty_name, match.group(0), local_context, match.start(), match.end(), value),
                 "value_parse_method": "span_followed_by_numeric_regex",
                 "measurement_context": infer_measurement_context(span, pretty_name, local_context, match.start(), match.end()),
-            }
+            })
 
     fraction_like = re.search(
         rf"(?i)\b(?:lvef|ef|ejection fraction|left ventricular ejection fraction)\b[^\d<>]{{0,40}}"
@@ -1608,27 +2268,33 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
         local_context,
     )
     if fraction_like and any(a in {"lvef", "ef", "ejection fraction", "left ventricular ejection fraction"} for a in aliases):
-        return {
-            "numeric_value": fraction_like.group("value"),
+        value = normalize_numeric_value(fraction_like.group("value"))
+        return preserve_numeric_qualifier({
+            "numeric_value": value,
             "unit": "%",
             "comparator": fraction_like.group("comparator"),
             "value_text": clean(fraction_like.group(0)),
-            "value_status": infer_value_status_from_match(span, pretty_name, fraction_like.group(0), local_context, fraction_like.start(), fraction_like.end(), fraction_like.group("value")),
+            "value_status": infer_value_status_from_match(span, pretty_name, fraction_like.group(0), local_context, fraction_like.start(), fraction_like.end(), value),
             "value_parse_method": "ejection_fraction_regex",
             "measurement_context": "observed_patient",
-        }
+        })
 
-    bp_like = re.search(rf"(?i)\b(?:bp|blood pressure)\b\s*[:=]?\s*(?P<value>\d{{2,3}}/\d{{2,3}}(?:\(\d{{2,3}}\))?)", local_context)
+    bp_like = re.search(
+        rf"(?i)\b(?:bp|blood pressure)\b\s*(?:[:=]|\bis\b|\bwas\b|\bcurrent(?:ly)?\b|\bremains?\b|\bremained\b|\bat\b)?\s*"
+        rf"(?P<value>\d{{2,3}}/\d{{2,3}}(?:\(\d{{2,3}}\))?)",
+        local_context,
+    )
     if bp_like and any(a in {"bp", "blood pressure"} for a in aliases):
-        return {
-            "numeric_value": bp_like.group("value"),
-            "unit": "mm Hg",
+        value = normalize_numeric_value(bp_like.group("value"))
+        return preserve_numeric_qualifier({
+            "numeric_value": value,
+            "unit": "mmHg",
             "comparator": None,
             "value_text": clean(bp_like.group(0)),
-            "value_status": infer_value_status_from_match(span, pretty_name, bp_like.group(0), local_context, bp_like.start(), bp_like.end(), bp_like.group("value")),
+            "value_status": infer_value_status_from_match(span, pretty_name, bp_like.group(0), local_context, bp_like.start(), bp_like.end(), value),
             "value_parse_method": "blood_pressure_regex",
             "measurement_context": "observed_patient",
-        }
+        })
 
     return {
         "numeric_value": None,
@@ -2457,6 +3123,7 @@ def main() -> int:
     anatomy_cue_counts = Counter()
     modifier_cue_counts = Counter()
     trend_cue_counts = Counter()
+    assertion_post_judge_counts = Counter()
     output_decision_counts = Counter()
     pre_umls_reject_reason_counts = Counter()
 
@@ -2583,13 +3250,22 @@ def main() -> int:
                     reasons = sorted(set([*reasons, *override_reasons]))
 
                 concept_category = infer_concept_category(source_value, pretty_name, type_ids, flags)
-                assertion_preview = infer_assertion_preview(
+                assertion_preview_raw = infer_assertion_preview(
                     sentence,
                     section,
                     action,
                     source_value,
                     evidence_context,
                     concept_category,
+                )
+                assertion_preview, assertion_post_judge_applied, assertion_post_judge_reasons = refine_assertion_preview(
+                    sentence,
+                    section,
+                    action,
+                    source_value,
+                    evidence_context,
+                    concept_category,
+                    assertion_preview_raw,
                 )
                 assertion_evaluable, assertion_evaluable_reason = assertion_evaluable_preview(
                     source_value,
@@ -2627,7 +3303,10 @@ def main() -> int:
                     "reason_codes": reasons,
                     "filter_flags": sorted(flags),
                     "concept_category_preview": concept_category,
+                    "assertion_status_preview_raw": assertion_preview_raw,
                     "assertion_status_preview": assertion_preview,
+                    "assertion_post_judge_applied": assertion_post_judge_applied,
+                    "assertion_post_judge_reasons": assertion_post_judge_reasons,
                     "assertion_evaluable_preview": assertion_evaluable,
                     "assertion_evaluable_reason": assertion_evaluable_reason,
                     "experiencer_preview": experiencer_preview,
@@ -2666,6 +3345,8 @@ def main() -> int:
                     flag_counts[flag] += 1
                 for reason in reasons:
                     reason_counts[reason] += 1
+                if assertion_post_judge_applied:
+                    assertion_post_judge_counts[assertion_preview] += 1
                 if action == "value_parse":
                     value_parse_counts[value_parse.get("value_parse_method") or "unknown"] += 1
 
@@ -2741,6 +3422,7 @@ def main() -> int:
         "anatomical_location_cue_counts": anatomy_cue_counts,
         "modifier_cue_counts": modifier_cue_counts,
         "trend_cue_counts": trend_cue_counts,
+        "assertion_post_judge_counts": assertion_post_judge_counts,
         "value_parse_method_counts": value_parse_counts,
         "output_decision_counts": output_decision_counts,
         "pre_umls_reject_reason_counts": pre_umls_reject_reason_counts,

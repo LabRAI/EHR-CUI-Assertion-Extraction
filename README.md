@@ -7,11 +7,11 @@ concept/assertion records:
 MIMIC-style notes
   -> MedCAT span-level entity linking
   -> schema-aware candidate filtering
-  -> optional MedCAT-CDB ontology overlay
-  -> optional measurement overlay
-  -> optional candidate specificity gate
-  -> SNOMED/UMLS normalization
-  -> strict CUI-assertion pairs
+  -> lab/vital measurement parsing
+  -> conservative MedCAT-CDB ontology coverage
+  -> target-local assertion inference
+  -> final boundary/category quality gate
+  -> structured concept-assertion-value records
 ```
 
 This repository contains code only. It does not include MIMIC notes, UMLS
@@ -25,8 +25,8 @@ If you are using this package to run extraction at another site, start with
 path from a fresh clone to a local smoke test and then to a private extraction
 run.
 
-For the latest refinement summary and benchmark snapshot, see
-[`docs/release_notes_20260728.md`](docs/release_notes_20260728.md).
+For the current validation scope and limitations, see
+[`docs/validation.md`](docs/validation.md).
 
 The repository is designed so each site keeps its own restricted assets outside
 git:
@@ -61,13 +61,15 @@ docs/
   genie_handoff.md                       # external collaborator run guide
   data_and_license.md                    # restricted-data handling notes
   pipeline.md                            # stage-by-stage extraction workflow
+  validation.md                          # current evaluation scope and limits
 examples/
   toy_notes.jsonl                        # synthetic notes only
 scripts/
-  run_extraction_auto.py                 # deployment-friendly auto CPU runner
+  run_final_extraction.py                # complete validated extraction stack
+  run_extraction_auto.py                 # linker-only auto CPU runner
   shard_mimic_notes.py                   # local restricted-note sharding
   extract_medcat_candidates.py           # standard MedCAT + schema filter
-  extract_medcat_candidates_prefork4.py  # optimized prefork benchmark extractor
+  extract_medcat_candidates_prefork4.py  # optimized prefork linker engine
   add_medcat_cdb_ontology_overlay.py     # optional strict disease coverage overlay
   add_medcat_measurement_overlay.py      # optional lab/vital value overlay
   apply_candidate_specificity_gate.py    # optional broad-anchor quality gate
@@ -114,9 +116,10 @@ cp configs/linker_filter_policy.example.json configs/linker_filter_policy.local.
 Check the wrapper without loading restricted data:
 
 ```bash
-python3 scripts/run_extraction_auto.py \
+python3 scripts/run_final_extraction.py \
   --notes-jsonl-gz examples/toy_notes.jsonl \
   --modelpack /tmp/not_loaded_in_dry_run.zip \
+  --cdb-path /tmp/not_loaded_in_dry_run_cdb \
   --filter-policy configs/linker_filter_policy.example.json \
   --output-root /tmp/ehr_extraction_smoke \
   --variant-name toy_dry_run \
@@ -125,13 +128,15 @@ python3 scripts/run_extraction_auto.py \
   --dry-run
 ```
 
-Run the deployment-friendly extractor. It automatically detects CPU cores from
-SLURM and uses the optimized prefork/batched linker path:
+Run the complete extractor. It automatically detects CPU cores from SLURM,
+uses the optimized prefork/batched linker path, and then applies the validated
+measurement, ontology, assertion, and final refinement stages:
 
 ```bash
-python3 scripts/run_extraction_auto.py \
+python3 scripts/run_final_extraction.py \
   --notes-jsonl-gz /path/to/private/note_shards/notes_shard_000000.jsonl.gz \
   --modelpack /path/to/licensed/medcat_modelpack.zip \
+  --cdb-path /path/to/licensed/medcat_modelpack/cdb \
   --filter-policy configs/linker_filter_policy.local.json \
   --output-root /path/to/private/extraction_auto \
   --variant-name shard000_auto
@@ -157,9 +162,13 @@ python3 scripts/extract_medcat_candidates.py \
   --selection-mode range \
   --start-note-index 1 \
   --end-note-index 5000 \
-  --output-mode strict_pre_umls \
+  --output-mode all_non_rejected \
   --compress-output
 ```
+
+Use `all_non_rejected` when any downstream measurement, ontology, assertion,
+or final-refinement stage will consume the linker output. The stricter
+`strict_pre_umls` mode is reserved for standalone linker benchmarks.
 
 Optionally add a strict disease ontology overlay from the licensed MedCAT CDB.
 This can recover exact disease anchors missed by contextual linking while
@@ -200,9 +209,8 @@ python3 scripts/add_medcat_measurement_overlay.py \
   --summary-json /path/to/private/extraction_measurements/measurement_overlay_summary.json
 ```
 
-For deployable CPU auto-detection and parallel task splitting, prefer
-`scripts/run_extraction_auto.py`; the lower-level extractor remains available
-for debugging and controlled ablations.
+`scripts/run_extraction_auto.py` remains available for linker-only scaling
+benchmarks. Use `scripts/run_final_extraction.py` for collaborator extraction.
 
 Build a SNOMED-to-UMLS crosswalk from licensed UMLS files:
 
@@ -235,28 +243,27 @@ unless `--allow-no-slurm` is explicitly supplied for local synthetic tests.
 ## Current Benchmark Reference
 
 On the internal 10K-note benchmark, the optimized prefork/batched linker path
-processed 10K notes on 4 CPU cores in about 35 minutes while preserving the same
-strict extraction target as the slower baseline. Use
+processed 10K notes on 4 CPU cores in about 35 minutes. Use
 `scripts/build_extraction_scaling_benchmark.py` and
 `scripts/summarize_extraction_scaling_benchmark.py` to reproduce a site-local
 runtime sweep.
 
 ## Deployment Entry Point
 
-`scripts/run_extraction_auto.py` is the main deployment wrapper. It detects
-SLURM CPU allocation or local CPU affinity, builds an explicit task config,
-runs the prefork MedCAT extractor, and records a run manifest. See
+`scripts/run_final_extraction.py` is the main deployment wrapper. It detects
+SLURM CPU allocation or local CPU affinity, runs the prefork MedCAT linker,
+applies the validated post-linker stages, and records a final manifest. See
 [`docs/deployment.md`](docs/deployment.md) for details.
 
 ## Notes
 
 - The code treats MedCAT as a candidate linker, not as the final labeler.
-- The optional ontology overlay uses the licensed MedCAT CDB as a conservative
+- The final profile uses the licensed MedCAT CDB as a conservative
   exact-match dictionary for disease anchors; it is not a substitute for the
   schema-aware assertion and strict-pair gates.
 - The optional specificity gate is a final candidate-quality filter for broad
   disease anchors that are poor strict-pair training events.
-- The optional measurement overlay recovers common lab/vital aliases and keeps
+- The final profile's measurement stage recovers common lab/vital aliases and keeps
   numeric value/unit fields in the same candidate JSONL schema.
 - The strict training view uses UMLS-normalized CUI IDs when a licensed
   SNOMED/UMLS crosswalk is available.

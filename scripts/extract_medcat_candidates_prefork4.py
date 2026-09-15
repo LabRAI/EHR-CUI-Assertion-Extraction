@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Benchmark-only prefork MedCAT extraction.
+"""Optimized prefork MedCAT candidate extraction.
 
 This script keeps the same candidate-record logic as extract_medcat_candidates.py
-but tests a different execution strategy: load the MedCAT modelpack once in the
-parent process, fork four CPU workers, and let each worker process one note
-range. It is intended for throughput benchmarking and must be validated against
-the standard extractor before any production use.
+while loading the MedCAT modelpack once in the parent process and forking CPU
+workers over explicit note ranges. The final wrapper uses all_non_rejected mode;
+standalone strict-linker benchmarks can use strict_pre_umls mode.
 """
 
 from __future__ import annotations
@@ -44,6 +43,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--max-note-chars", type=int, default=7000)
     parser.add_argument("--min-acc", type=float, default=0.0)
+    parser.add_argument(
+        "--output-mode",
+        choices=["all_non_rejected", "strict_pre_umls"],
+        default="strict_pre_umls",
+        help="Candidate output contract; use all_non_rejected when downstream overlays perform final refinement.",
+    )
     parser.add_argument("--pre-umls-min-keep-score", type=float, default=0.99)
     parser.add_argument("--sentence-chars", type=int, default=420)
     parser.add_argument("--context-chars", type=int, default=650)
@@ -124,6 +129,7 @@ def process_task(task_id: str) -> dict[str, Any]:
     anatomy_cue_counts: Counter[str] = Counter()
     modifier_cue_counts: Counter[str] = Counter()
     trend_cue_counts: Counter[str] = Counter()
+    assertion_post_judge_counts: Counter[str] = Counter()
     output_decision_counts: Counter[str] = Counter()
     pre_umls_reject_reason_counts: Counter[str] = Counter()
 
@@ -258,13 +264,22 @@ def process_task(task_id: str) -> dict[str, Any]:
                     reasons = sorted(set([*reasons, *override_reasons]))
 
                 concept_category = base.infer_concept_category(source_value, pretty_name, type_ids, flags)
-                assertion_preview = base.infer_assertion_preview(
+                assertion_preview_raw = base.infer_assertion_preview(
                     sentence,
                     section,
                     action,
                     source_value,
                     evidence_context,
                     concept_category,
+                )
+                assertion_preview, assertion_post_judge_applied, assertion_post_judge_reasons = base.refine_assertion_preview(
+                    sentence,
+                    section,
+                    action,
+                    source_value,
+                    evidence_context,
+                    concept_category,
+                    assertion_preview_raw,
                 )
                 assertion_evaluable, assertion_evaluable_reason = base.assertion_evaluable_preview(
                     source_value,
@@ -304,7 +319,10 @@ def process_task(task_id: str) -> dict[str, Any]:
                     "reason_codes": reasons,
                     "filter_flags": sorted(flags),
                     "concept_category_preview": concept_category,
+                    "assertion_status_preview_raw": assertion_preview_raw,
                     "assertion_status_preview": assertion_preview,
+                    "assertion_post_judge_applied": assertion_post_judge_applied,
+                    "assertion_post_judge_reasons": assertion_post_judge_reasons,
                     "assertion_evaluable_preview": assertion_evaluable,
                     "assertion_evaluable_reason": assertion_evaluable_reason,
                     "experiencer_preview": experiencer_preview,
@@ -344,6 +362,8 @@ def process_task(task_id: str) -> dict[str, Any]:
                     flag_counts[flag] += 1
                 for reason in reasons:
                     reason_counts[reason] += 1
+                if assertion_post_judge_applied:
+                    assertion_post_judge_counts[assertion_preview] += 1
                 if action == "value_parse":
                     value_parse_counts[value_parse.get("value_parse_method") or "unknown"] += 1
 
@@ -351,18 +371,21 @@ def process_task(task_id: str) -> dict[str, Any]:
                     rejected_seen += 1
                     base.add_reservoir(rejected_records, record, rejected_seen, int(args.max_rejected_records), rng)
                 else:
-                    output_ok, output_reasons = base.strict_pre_umls_decision(
-                        record,
-                        float(args.pre_umls_min_keep_score),
-                    )
-                    if not output_ok:
-                        output_decision_counts["pre_umls_rejected"] += 1
-                        for reason in output_reasons:
-                            pre_umls_reject_reason_counts[reason] += 1
-                        continue
-                    record["pre_umls_strict_gate"] = "passed"
-                    record["pre_umls_strict_reasons"] = output_reasons
-                    output_decision_counts["pre_umls_written"] += 1
+                    if args.output_mode == "strict_pre_umls":
+                        output_ok, output_reasons = base.strict_pre_umls_decision(
+                            record,
+                            float(args.pre_umls_min_keep_score),
+                        )
+                        if not output_ok:
+                            output_decision_counts["pre_umls_rejected"] += 1
+                            for reason in output_reasons:
+                                pre_umls_reject_reason_counts[reason] += 1
+                            continue
+                        record["pre_umls_strict_gate"] = "passed"
+                        record["pre_umls_strict_reasons"] = output_reasons
+                        output_decision_counts["pre_umls_written"] += 1
+                    else:
+                        output_decision_counts["non_rejected_written"] += 1
                     cand_fh.write(json.dumps(record, ensure_ascii=False) + "\n")
                     candidate_records_written += 1
 
@@ -404,7 +427,7 @@ def process_task(task_id: str) -> dict[str, Any]:
         },
         "sampling": selection_stats,
         "note_text_filter_stats": note_text_filter_stats,
-        "output_mode": "strict_pre_umls",
+        "output_mode": args.output_mode,
         "pre_umls_min_keep_score": float(args.pre_umls_min_keep_score),
         "notes_processed": notes_processed,
         "notes_with_entities": notes_with_entities,
@@ -426,6 +449,7 @@ def process_task(task_id: str) -> dict[str, Any]:
         "anatomical_location_cue_counts": counter_to_dict(anatomy_cue_counts),
         "modifier_cue_counts": counter_to_dict(modifier_cue_counts),
         "trend_cue_counts": counter_to_dict(trend_cue_counts),
+        "assertion_post_judge_counts": counter_to_dict(assertion_post_judge_counts),
         "value_parse_method_counts": counter_to_dict(value_parse_counts),
         "output_decision_counts": counter_to_dict(output_decision_counts),
         "pre_umls_reject_reason_counts": counter_to_dict(pre_umls_reject_reason_counts),

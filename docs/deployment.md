@@ -3,26 +3,29 @@
 The recommended deployment entry point is:
 
 ```bash
-python3 scripts/run_extraction_auto.py
+python3 scripts/run_final_extraction.py
 ```
 
-It expects private note shards plus a licensed MedCAT modelpack. The runner:
+It expects private note shards, a licensed MedCAT modelpack, and its CDB. The runner:
 
 - detects available CPU cores from `SLURM_CPUS_PER_TASK`, then
   `SLURM_CPUS_ON_NODE`, then Linux CPU affinity, then `os.cpu_count()`;
 - splits the provided note shards into explicit tasks;
 - loads MedCAT once in a parent process and forks CPU workers;
 - uses MedCAT batched `get_entities_multi_texts` inside each worker;
-- writes a run manifest, task config, shard-level stats, and extraction summary;
+- applies measurement, conservative ontology, assertion-scope, and final
+  boundary/category refinement;
+- writes a final run manifest and stage-level summaries;
 - blocks restricted clinical-data runs outside SLURM unless `--allow-no-slurm`
   is explicitly used for synthetic smoke tests.
 
 ## Minimal SLURM Run
 
 ```bash
-python3 scripts/run_extraction_auto.py \
+python3 scripts/run_final_extraction.py \
   --notes-jsonl-gz /private/note_shards/notes_shard_000000.jsonl.gz \
   --modelpack /private/models/medcat_modelpack.zip \
+  --cdb-path /private/models/medcat_modelpack/cdb \
   --filter-policy configs/linker_filter_policy.local.json \
   --output-root /private/outputs/extraction_auto \
   --variant-name shard000_auto
@@ -31,16 +34,17 @@ python3 scripts/run_extraction_auto.py \
 By default, the runner uses all CPU cores assigned by SLURM. To cap usage:
 
 ```bash
-python3 scripts/run_extraction_auto.py ... --workers 4
+python3 scripts/run_final_extraction.py ... --workers 4
 ```
 
 For many shards, pass `--notes-jsonl-gz` multiple times:
 
 ```bash
-python3 scripts/run_extraction_auto.py \
+python3 scripts/run_final_extraction.py \
   --notes-jsonl-gz /private/note_shards/notes_shard_000000.jsonl.gz \
   --notes-jsonl-gz /private/note_shards/notes_shard_000001.jsonl.gz \
   --modelpack /private/models/medcat_modelpack.zip \
+  --cdb-path /private/models/medcat_modelpack/cdb \
   --filter-policy configs/linker_filter_policy.local.json \
   --output-root /private/outputs/extraction_auto \
   --variant-name multi_shard_auto
@@ -52,14 +56,15 @@ python3 scripts/run_extraction_auto.py \
 <output-root>/
   <variant>.config.json
   <variant>.run_manifest.json
-  variant_<variant>/extraction/
-    prefork4_summary.json
-    shard_*/medcat_candidate_stats.json
+  variant_<variant>/
+    final_pipeline_manifest.json
+    05_final/medcat_candidates.jsonl.gz
+    reports/
+    extraction/prefork4_summary.json
 ```
 
-Candidate JSONL files are kept by default because the next UMLS-mapping stage
-needs them. Add `--delete-candidate-files` only for benchmark runs where
-shard-level stats are sufficient.
+`run_extraction_auto.py` is the linker-only entry point for runtime benchmarks;
+it is not the complete collaborator pipeline.
 
 ## Dependency Boundary
 

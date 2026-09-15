@@ -28,6 +28,55 @@ import extract_medcat_candidates as base  # noqa: E402
 
 TARGET_ACTIONS = {"keep_candidate", "review_candidate", "value_parse"}
 TARGET_CONCEPTS: dict[str, dict[str, Any]] = {
+    "anc": {
+        "concept_id": "CLINICAL_MEASUREMENT:ANC",
+        "concept_id_system": "CLINICAL_MEASUREMENT",
+        "pretty_name": "Absolute neutrophil count",
+        "type_ids": ["91187746"],
+        "aliases": ["anc", "absolute neutrophil count", "neutrophil count"],
+    },
+    "ca 19-9": {
+        "concept_id": "CLINICAL_MEASUREMENT:CA19_9",
+        "concept_id_system": "CLINICAL_MEASUREMENT",
+        "pretty_name": "Cancer Antigen 19-9",
+        "type_ids": ["91187746"],
+        "aliases": ["ca 19-9", "ca19-9", "cancer antigen 19-9", "carbohydrate antigen 19-9"],
+    },
+    "temperature": {
+        "concept_id": "722490005",
+        "concept_id_system": "SNOMED_CT",
+        "pretty_name": "Body temperature",
+        "type_ids": ["2680757"],
+        "aliases": ["temperature", "temp"],
+    },
+    "ph": {
+        "concept_id": "264725002",
+        "concept_id_system": "SNOMED_CT",
+        "pretty_name": "Blood pH",
+        "type_ids": ["2680757"],
+        "aliases": ["ph", "blood ph", "abg ph", "arterial ph"],
+    },
+    "bicarbonate": {
+        "concept_id": "88645003",
+        "concept_id_system": "SNOMED_CT",
+        "pretty_name": "Bicarbonate measurement",
+        "type_ids": ["91187746"],
+        "aliases": ["bicarbonate", "bicarb", "hco3", "co2"],
+    },
+    "potassium": {
+        "concept_id": "88480006",
+        "concept_id_system": "SNOMED_CT",
+        "pretty_name": "Potassium measurement",
+        "type_ids": ["91187746"],
+        "aliases": ["potassium", "k"],
+    },
+    "procalcitonin": {
+        "concept_id": "418752001",
+        "concept_id_system": "SNOMED_CT",
+        "pretty_name": "Procalcitonin measurement",
+        "type_ids": ["91187746"],
+        "aliases": ["procalcitonin", "pct"],
+    },
     "na": {
         "concept_id": "25197003",
         "concept_id_system": "SNOMED_CT",
@@ -294,9 +343,29 @@ def add_missing_rows(
             continue
         for match in pattern.finditer(note_text):
             start, end = match.start(), match.end()
-            if any(overlap(start, end, s, e) > 0 for s, e in spans):
+            overlapping_indices = []
+            skip_new_row = False
+            for idx, row in enumerate(output):
+                rs = int(row.get("span_start") or 0)
+                re_ = int(row.get("span_end") or 0)
+                ov = overlap(start, end, rs, re_)
+                if ov <= 0:
+                    continue
+                if row.get("filter_action") == "value_parse":
+                    skip_new_row = True
+                    break
+                row_cat = base.norm_key(row.get("concept_category_preview") or "")
+                row_len = max(1, re_ - rs)
+                if row_cat != "lab_result_or_value" and ov >= row_len:
+                    overlapping_indices.append(idx)
+            if skip_new_row:
                 continue
-            key = (start, end, alias_key)
+            if overlapping_indices:
+                remove_set = set(overlapping_indices)
+                output = [row for idx, row in enumerate(output) if idx not in remove_set]
+                spans = [(int(r.get("span_start") or 0), int(r.get("span_end") or 0)) for r in output]
+                seen = {(int(r.get("span_start") or 0), int(r.get("span_end") or 0), base.norm_key(r.get("span") or "")) for r in output}
+            key = (start, end, base.norm_key(note_text[start:end]))
             if key in seen:
                 continue
             sentence = base.sentence_for_span(note_text, start, end, 420)

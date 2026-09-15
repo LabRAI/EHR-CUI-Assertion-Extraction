@@ -24,6 +24,7 @@ Place restricted assets outside git:
   data/restricted/mimic.zip
   data/interim/note_shards/
   models/medcat/<licensed-modelpack>.zip
+  models/medcat/<licensed-modelpack>/cdb
   umls/META/MRCONSO.RRF.gz
   outputs/
   logs/
@@ -35,6 +36,7 @@ Required external dependencies:
 |---|---|---|
 | MIMIC-style note archive | source clinical notes | no |
 | MedCAT modelpack | span-level concept linker | no |
+| MedCAT CDB directory/file | conservative disease coverage overlay | no |
 | UMLS `MRCONSO.RRF(.gz)` | SNOMED-to-UMLS CUI mapping | no |
 
 ## Smoke Test Without Restricted Data
@@ -42,9 +44,10 @@ Required external dependencies:
 You can verify argument parsing and auto CPU detection on synthetic notes:
 
 ```bash
-python3 scripts/run_extraction_auto.py \
+python3 scripts/run_final_extraction.py \
   --notes-jsonl-gz examples/toy_notes.jsonl \
   --modelpack /tmp/not_loaded_in_dry_run.zip \
+  --cdb-path /tmp/not_loaded_in_dry_run_cdb \
   --filter-policy configs/linker_filter_policy.example.json \
   --output-root /tmp/ehr_extraction_smoke \
   --variant-name toy_dry_run \
