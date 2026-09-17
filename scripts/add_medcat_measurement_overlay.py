@@ -24,6 +24,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import extract_medcat_candidates as base  # noqa: E402
+from site_profile import load_site_profile, measurement_scope  # noqa: E402
 
 
 TARGET_ACTIONS = {"keep_candidate", "review_candidate", "value_parse"}
@@ -192,6 +193,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-dir", required=True)
     p.add_argument("--summary-json", required=True)
     p.add_argument("--name", default="measurement_overlay")
+    p.add_argument("--site-profile", help="Optional frozen site_profile.json")
     return p.parse_args()
 
 
@@ -275,7 +277,11 @@ def find_note_rows(notes_paths: list[Path]) -> dict[str, dict[str, Any]]:
     return notes
 
 
-def repair_existing_row(row: dict[str, Any], note_text: str) -> tuple[dict[str, Any], bool]:
+def repair_existing_row(
+    row: dict[str, Any],
+    note_text: str,
+    measurement_config: dict[str, int],
+) -> tuple[dict[str, Any], bool]:
     raw_span = str(row.get("span") or "")
     concept = base.leading_lab_alias(raw_span)
     if not concept:
@@ -292,7 +298,15 @@ def repair_existing_row(row: dict[str, Any], note_text: str) -> tuple[dict[str, 
     sentence = base.sentence_for_span(note_text, new_start, new_end, 420)
     context_raw, ctx_start, ctx_end = base.context_with_marker(note_text, new_start, new_end)
     context, ctx_start, ctx_end = base.clean_context_with_span(context_raw, ctx_start, ctx_end)
-    value_parse = base.parse_lab_value(alias, spec["pretty_name"], context, ctx_start, ctx_end)
+    value_parse = base.parse_lab_value(
+        alias,
+        spec["pretty_name"],
+        context,
+        ctx_start,
+        ctx_end,
+        local_before=measurement_config["before_chars"],
+        local_after=measurement_config["after_chars"],
+    )
     if not value_parse.get("numeric_value"):
         return row, False
     updated = dict(row)
@@ -332,6 +346,7 @@ def add_missing_rows(
     note_meta: dict[str, Any],
     existing: list[dict[str, Any]],
     pattern_map: dict[str, re.Pattern[str]],
+    measurement_config: dict[str, int],
 ) -> list[dict[str, Any]]:
     note_text = str(note_meta.get("text") or "")
     output = list(existing)
@@ -371,7 +386,15 @@ def add_missing_rows(
             sentence = base.sentence_for_span(note_text, start, end, 420)
             context_raw, ctx_start, ctx_end = base.context_with_marker(note_text, start, end)
             context, ctx_start, ctx_end = base.clean_context_with_span(context_raw, ctx_start, ctx_end)
-            value_parse = base.parse_lab_value(alias_key, spec["pretty_name"], context, ctx_start, ctx_end)
+            value_parse = base.parse_lab_value(
+                alias_key,
+                spec["pretty_name"],
+                context,
+                ctx_start,
+                ctx_end,
+                local_before=measurement_config["before_chars"],
+                local_after=measurement_config["after_chars"],
+            )
             if not value_parse.get("numeric_value"):
                 continue
             row = {
@@ -432,6 +455,11 @@ def main() -> int:
     if len(args.notes_jsonl_gz) != len(args.candidate_jsonl):
         raise SystemExit("--notes-jsonl-gz and --candidate-jsonl counts must match")
 
+    site_profile = load_site_profile(args.site_profile)
+    measurement_config = {
+        "before_chars": measurement_scope(site_profile, "before_chars"),
+        "after_chars": measurement_scope(site_profile, "after_chars"),
+    }
     notes = find_note_rows([Path(p) for p in args.notes_jsonl_gz])
     pattern_map = alias_patterns()
     out_dir = Path(args.output_dir)
@@ -454,7 +482,7 @@ def main() -> int:
                     note_id = str(row.get("note_row_id") or "")
                     note_text = str((notes.get(note_id) or {}).get("text") or "")
                     if note_text and row.get("filter_action") in TARGET_ACTIONS:
-                        repaired, did_repair = repair_existing_row(row, note_text)
+                        repaired, did_repair = repair_existing_row(row, note_text, measurement_config)
                         if did_repair:
                             repaired_rows.append(repaired)
                             summary["repaired_rows"] += 1
@@ -469,7 +497,7 @@ def main() -> int:
     for note_id, rows in sorted(by_note.items(), key=lambda item: item[0]):
         note_meta = notes.get(note_id) or {}
         note_text = str(note_meta.get("text") or "")
-        rows = add_missing_rows(note_id, note_meta, rows, pattern_map) if note_text else rows
+        rows = add_missing_rows(note_id, note_meta, rows, pattern_map, measurement_config) if note_text else rows
         rows.sort(key=lambda r: (int(r.get("span_start") or 0), int(r.get("span_end") or 0), str(r.get("span") or "")))
         summary["added_rows"] += max(0, len(rows) - len(by_note[note_id]))
         final_rows.extend(rows)
@@ -487,6 +515,9 @@ def main() -> int:
             "added_rows": summary["added_rows"],
             "alias_counts": dict(summary["alias_counts"]),
             "total_rows": len(final_rows),
+            "site_profile": args.site_profile,
+            "adaptation_mode": site_profile["adaptation_mode"],
+            "measurement_scope": measurement_config,
         },
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     chmod_private(out_path)

@@ -134,6 +134,23 @@ python3 scripts/run_final_extraction.py ... --workers 4
 The wrapper blocks real non-SLURM processing unless `--allow-no-slurm` is
 provided. Use that flag only for synthetic smoke tests or local development.
 
+## Optional Site Profile
+
+For a new note layout, first run the frozen extractor on a local calibration
+split, then build and freeze a CPU-only aggregate profile:
+
+```bash
+python3 scripts/build_site_profile.py \
+  --notes-jsonl-gz /private/calibration/notes.jsonl.gz \
+  --candidate-jsonl /private/calibration/05_final/medcat_candidates.jsonl.gz \
+  --output /private/config/site_profile.json
+```
+
+Pass the frozen file to the held-out run with
+`--site-profile /private/config/site_profile.json`. Do not build or select the
+profile using held-out test labels. See `docs/site_adaptation.md` for the
+non-regression gate and privacy contract.
+
 ## Outputs To Check
 
 A successful run writes:
@@ -250,3 +267,4 @@ sharing agreement explicitly covers them.
 5. The final file contains nonzero kept/review/value-parse records.
 6. Optional UMLS annotation succeeds if UMLS CUI output is required.
 7. Strict pair split creation completes and validates against the schema.
+8. Any optional site profile passes the local non-regression gate before use.

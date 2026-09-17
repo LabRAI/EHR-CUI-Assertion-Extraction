@@ -2201,10 +2201,25 @@ def infer_measurement_context(
     return "observed_patient"
 
 
-def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None = None, end: int | None = None) -> dict[str, Any]:
+def parse_lab_value(
+    span: str,
+    pretty_name: str,
+    context: str,
+    start: int | None = None,
+    end: int | None = None,
+    *,
+    local_before: int = 90,
+    local_after: int = 130,
+) -> dict[str, Any]:
     aliases = aliases_for_lab(span, pretty_name)
     alias_set = set(aliases)
-    local_context, local_start, local_end = local_span_slice(context, start, end)
+    local_context, local_start, local_end = local_span_slice(
+        context,
+        start,
+        end,
+        before=min(90, local_before),
+        after=min(130, local_after),
+    )
     coag_value = parse_coag_panel_value(span, pretty_name, local_context, local_start, local_end)
     if coag_value:
         return preserve_numeric_qualifier(coag_value)

@@ -57,6 +57,7 @@ raw linker output.
 configs/
   extraction_schema.json                 # final pair schema
   linker_filter_policy.example.json      # sanitized schema-aware filter policy
+  site_profile.schema.json               # optional CPU site-adaptation contract
 docs/
   genie_handoff.md                       # external collaborator run guide
   data_and_license.md                    # restricted-data handling notes
@@ -66,6 +67,7 @@ examples/
   toy_notes.jsonl                        # synthetic notes only
 scripts/
   run_final_extraction.py                # complete validated extraction stack
+  build_site_profile.py                  # aggregate local layout/distance profiler
   run_extraction_auto.py                 # linker-only auto CPU runner
   shard_mimic_notes.py                   # local restricted-note sharding
   extract_medcat_candidates.py           # standard MedCAT + schema filter
@@ -239,6 +241,30 @@ python3 scripts/build_full_shard_strict_pair_splits.py \
 For real MIMIC or licensed MedCAT/UMLS processing, run these commands inside
 SLURM. The scripts intentionally block project-scale processing on login nodes
 unless `--allow-no-slurm` is explicitly supplied for local synthetic tests.
+
+## Optional CPU Site Adaptation
+
+For a new institution, build a sanitized profile from a local calibration split
+and freeze it before evaluating a held-out test split:
+
+```bash
+python3 scripts/build_site_profile.py \
+  --notes-jsonl-gz /private/calibration/notes.jsonl.gz \
+  --candidate-jsonl /private/calibration/05_final/medcat_candidates.jsonl.gz \
+  --output /private/config/site_profile.json
+
+python3 scripts/run_final_extraction.py \
+  ... \
+  --site-profile /private/config/site_profile.json
+```
+
+The profile uses aggregate cue-to-target and concept-to-value distances. It
+does not contain note text, entity strings, CUIs, section names, or source
+paths. Structural boundaries remain authoritative, and unlabeled adaptation
+can only tighten the validated windows. The frozen default is unchanged when
+`--site-profile` is omitted. See [`docs/site_adaptation.md`](docs/site_adaptation.md).
+Use `scripts/compare_adaptive_metrics.py` as a fail-closed calibration gate
+before accepting a profile.
 
 ## Current Benchmark Reference
 

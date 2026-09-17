@@ -20,6 +20,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from site_profile import assertion_scope, load_site_profile
+
 
 TARGET_ACTIONS = {"keep_candidate", "review_candidate", "value_parse", "context_only", "reject_candidate"}
 CLINICAL_CATEGORIES = {
@@ -32,6 +34,32 @@ CLINICAL_CATEGORIES = {
     "social_history",
 }
 PRESENT_DEFAULT_CATEGORIES = CLINICAL_CATEGORIES - {"social_history"}
+
+ACTIVE_SITE_PROFILE = load_site_profile(None)
+
+
+def configure_site_profile(path: str | Path | None) -> None:
+    global ACTIVE_SITE_PROFILE
+    ACTIVE_SITE_PROFILE = load_site_profile(path)
+
+
+def scope_limit(family: str, key: str, frozen_limit: int) -> int:
+    """Use site adaptation only to tighten a validated frozen limit."""
+    return min(frozen_limit, assertion_scope(ACTIVE_SITE_PROFILE, family, key))
+
+
+def site_adaptation_enabled() -> bool:
+    return ACTIVE_SITE_PROFILE["adaptation_mode"] != "frozen_default"
+
+
+def scoped_before(text: str, start: int, family: str, frozen_limit: int) -> str:
+    width = scope_limit(family, "before_chars", frozen_limit)
+    return text[max(0, start - width) : start]
+
+
+def scoped_after(text: str, end: int, family: str, frozen_limit: int) -> str:
+    width = scope_limit(family, "after_chars", frozen_limit)
+    return text[end : min(len(text), end + width)]
 
 NEG_BEFORE = re.compile(
     r"\b(?:no|none|denies?|denied|without|w/o|negative for|free of|no evidence of|"
@@ -334,7 +362,12 @@ def cue_is_immediate_postmodifier(middle: str, max_chars: int = 14) -> bool:
     return not has_enumeration_break(compact)
 
 
-def cue_before_scopes_to_target(middle: str, *, target_is_event_or_procedure: bool = False) -> bool:
+def cue_before_scopes_to_target(
+    middle: str,
+    *,
+    target_is_event_or_procedure: bool = False,
+    max_chars: int = 90,
+) -> bool:
     """Reject broad cue leakage across another listed entity."""
     if "," in middle or ";" in middle or ":" in middle:
         return False
@@ -347,7 +380,7 @@ def cue_before_scopes_to_target(middle: str, *, target_is_event_or_procedure: bo
         return False
     if re.search(r"\b(?:and|or)\b", compact, re.I) and not target_is_event_or_procedure:
         return False
-    return len(compact) <= 90
+    return len(compact) <= max_chars
 
 
 def condition_after_scopes_to_target(middle: str) -> bool:
@@ -363,7 +396,7 @@ def condition_after_scopes_to_target(middle: str) -> bool:
         return False
     if has_enumeration_break(compact) and len(compact) > 8:
         return False
-    return len(compact) <= 28
+    return len(compact) <= scope_limit("conditional", "after_gap_chars", 28)
 
 
 def clause_around(text: str, start: int, end: int) -> tuple[str, int, int]:
@@ -395,6 +428,11 @@ def target_in_condition_clause(clause: str, rel_start: int, rel_end: int) -> tup
     middle = before[cue.end() :]
     if reject_if_scope_crosses(middle):
         return False, "", ""
+    if (
+        site_adaptation_enabled()
+        and len(clean_between(middle)) > scope_limit("conditional", "before_gap_chars", 110)
+    ):
+        return False, "", ""
     action = action_before_target(middle)
     if action:
         return False, "", ""
@@ -411,12 +449,21 @@ def target_in_conditioned_action(clause: str, rel_start: int, rel_end: int) -> t
         cue = cond_before[-1]
         middle = before[cue.end() :]
         action = action_before_target(middle)
-        if action and not reject_if_scope_crosses(middle[action.end() :]):
+        if (
+            action
+            and not reject_if_scope_crosses(middle[action.end() :])
+            and (
+                not site_adaptation_enabled()
+                or len(clean_between(middle)) <= scope_limit("conditional", "before_gap_chars", 110)
+            )
+        ):
             return True, "if_before_action_target"
 
     cond_after = CONDITION_CUE.search(after)
     if cond_after and condition_after_scopes_to_target(after[: cond_after.start()]):
-        if action_before_target(before[-90:]) or planned_before_target(before[-110:]):
+        action_width = scope_limit("conditional", "before_gap_chars", 90)
+        planned_width = scope_limit("conditional", "before_gap_chars", 110)
+        if action_before_target(before[-action_width:]) or planned_before_target(before[-planned_width:]):
             return True, "action_target_if_after"
 
     return False, ""
@@ -444,31 +491,39 @@ def has_event_frame_status(text: str, span: str, category: str) -> tuple[str, st
             return "conditional", "if_condition_generic"
 
         if is_disease_or_finding(category):
-            if DISEASE_UNCERTAIN_PENDING_AFTER.search(after[:100]):
+            if DISEASE_UNCERTAIN_PENDING_AFTER.search(after[:scope_limit("possible", "after_chars", 100)]):
                 return "possible", "disease_pending_uncertainty"
-            if re.search(r"\bconsider(?:ed)?\b", before[-90:], re.I) and not action_before_target(before[-90:]):
+            possible_before = before[-scope_limit("possible", "before_chars", 90):]
+            possible_gap = scope_limit("possible", "before_gap_chars", 90)
+            if re.search(r"\bconsider(?:ed)?\b", possible_before, re.I) and not action_before_target(possible_before):
                 return "possible", "disease_considered_uncertainty"
-            if POSSIBLE_CUE.search(before[-90:]) and cue_before_scopes_to_target(before[-90:]):
+            if POSSIBLE_CUE.search(possible_before) and cue_before_scopes_to_target(possible_before, max_chars=possible_gap):
                 return "possible", "disease_local_uncertainty"
 
         in_action, action_reason = target_in_conditioned_action(clause, rel_start, rel_end)
         if in_action:
-            if is_disease_or_finding(category) and PENDING_CONDITION_CUE.search(after[:80]):
+            if is_disease_or_finding(category) and PENDING_CONDITION_CUE.search(
+                after[:scope_limit("possible", "after_chars", 80)]
+            ):
                 return "possible", "disease_pending_uncertainty"
             return "conditional", action_reason
 
-        planned = planned_before_target(before[-140:])
+        planned = planned_before_target(before[-scope_limit("hypothetical", "before_chars", 140):])
         if planned and (category in {"procedure", "medication_or_substance"} or is_procedure_like(span, category)):
             return "hypothetical", "planned_action_before_target"
         if (category in {"procedure", "medication_or_substance"} or is_procedure_like(span, category)) and re.search(
             r"\b(?:ordered|scheduled|planned|pending|to be discussed|as outpatient)\b",
-            after[:90],
+            after[:scope_limit("hypothetical", "after_chars", 90)],
             re.I,
         ):
             return "hypothetical", "planned_action_after_target"
         if category in {"disease_or_diagnosis", "finding"}:
-            eval_cue = EVALUATION_POSSIBLE_CUE.search(before[-120:])
-            if eval_cue and cue_before_scopes_to_target(before[-120:][eval_cue.end() :]):
+            evaluation_before = before[-scope_limit("possible", "before_chars", 120):]
+            eval_cue = EVALUATION_POSSIBLE_CUE.search(evaluation_before)
+            if eval_cue and cue_before_scopes_to_target(
+                evaluation_before[eval_cue.end() :],
+                max_chars=scope_limit("possible", "before_gap_chars", 90),
+            ):
                 return "possible", "disease_evaluation_frame"
     return "", "no_event_frame"
 
@@ -500,7 +555,7 @@ def neg_before_scopes_to_target(middle: str, span: str = "") -> bool:
             re.I,
         ):
             return False
-    return len(clean_between(middle)) <= 120
+    return len(clean_between(middle)) <= scope_limit("negation", "before_gap_chars", 120)
 
 
 def history_prefixed_present_status(text: str, span: str) -> tuple[str, str]:
@@ -637,21 +692,32 @@ def neg_after_scopes_to_target(middle: str) -> bool:
         return False
     if CONDITION_CUE.search(middle) or CONDITIONAL_ACTION.search(middle) or PLANNED_ACTION_CUE.search(middle):
         return False
-    return cue_is_immediate_postmodifier(middle, max_chars=20)
+    return cue_is_immediate_postmodifier(
+        middle,
+        max_chars=scope_limit("negation", "after_gap_chars", 20),
+    )
 
 
 def has_uncertain_exclusion(text: str, span: str) -> tuple[bool, str]:
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 120) : start]
-        after = text[end : min(len(text), end + 120)]
+        before = scoped_before(text, start, "uncertain", 120)
+        after = scoped_after(text, end, "uncertain", 120)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[.;\n]", after)[0]
         cue = UNCERTAIN_EXCLUSION.search(before_clause)
-        if cue and cue_before_scopes_to_target(before_clause[cue.end() :]):
+        if cue and cue_before_scopes_to_target(
+            before_clause[cue.end() :],
+            max_chars=scope_limit("uncertain", "before_gap_chars", 90),
+        ):
             return True, "uncertain_exclusion_before_target"
         cue = UNCERTAIN_EXCLUSION.search(after_clause)
-        if cue and not has_enumeration_break(after_clause[: cue.start()]) and len(clean_between(after_clause[: cue.start()])) <= 60:
+        if (
+            cue
+            and not has_enumeration_break(after_clause[: cue.start()])
+            and len(clean_between(after_clause[: cue.start()]))
+            <= scope_limit("uncertain", "after_gap_chars", 60)
+        ):
             return True, "uncertain_exclusion_after_target"
     return False, "no_uncertain_exclusion"
 
@@ -659,19 +725,26 @@ def has_uncertain_exclusion(text: str, span: str) -> tuple[bool, str]:
 def has_definite_present(text: str, span: str) -> tuple[bool, str]:
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 130) : start]
-        after = text[end : min(len(text), end + 80)]
+        before = scoped_before(text, start, "current", 130)
+        after = scoped_after(text, end, "current", 80)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[.;\n]", after)[0]
         cue = DEFINITE_PRESENT_CUE.search(before_clause)
-        if cue and cue_before_scopes_to_target(before_clause[cue.end() :]):
+        if cue and cue_before_scopes_to_target(
+            before_clause[cue.end() :],
+            max_chars=scope_limit("current", "before_gap_chars", 90),
+        ):
             middle = before_clause[cue.end() :]
             if POSSIBLE_CUE.search(middle) or POSSIBLE_AFTER_CUE.search(middle):
                 continue
             return True, "definite_present_before_target"
         cue = DEFINITE_PRESENT_CUE.search(after_clause)
         if cue and cue_is_immediate_postmodifier(after_clause[: cue.start()], max_chars=28):
-            if POSSIBLE_CUE.search(before_clause[-90:]) and cue_before_scopes_to_target(before_clause[-90:]):
+            possible_before = before_clause[-scope_limit("possible", "before_chars", 90):]
+            if POSSIBLE_CUE.search(possible_before) and cue_before_scopes_to_target(
+                possible_before,
+                max_chars=scope_limit("possible", "before_gap_chars", 90),
+            ):
                 continue
             return True, "definite_present_after_target"
     return False, "no_definite_present"
@@ -685,8 +758,8 @@ def has_negation(text: str, span: str, category: str = "") -> tuple[bool, str]:
         return False, "normal_present_finding"
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 150) : start]
-        after = text[end : min(len(text), end + 90)]
+        before = scoped_before(text, start, "negation", 150)
+        after = scoped_after(text, end, "negation", 90)
         hold = HOLD_BEFORE.search(before)
         if category in {"medication_or_substance", "procedure"} and hold and neg_before_scopes_to_target(before[hold.end() :], span):
             return True, "hold_or_discontinue_before"
@@ -707,17 +780,33 @@ def has_negation(text: str, span: str, category: str = "") -> tuple[bool, str]:
 def has_conditional(text: str, span: str, category: str = "") -> tuple[bool, str]:
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 170) : start]
-        after = text[end : min(len(text), end + 130)]
+        before = scoped_before(text, start, "conditional", 170)
+        after = scoped_after(text, end, "conditional", 130)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[.;\n]", after)[0]
 
         prn_after = PRN_CUE.search(after_clause)
-        if prn_after and not reject_if_scope_crosses(after_clause[: prn_after.start()]):
+        if (
+            prn_after
+            and not reject_if_scope_crosses(after_clause[: prn_after.start()])
+            and (
+                not site_adaptation_enabled()
+                or len(clean_between(after_clause[: prn_after.start()]))
+                <= scope_limit("conditional", "after_gap_chars", 28)
+            )
+        ):
             return True, "prn_after_target"
 
         prn_before = PRN_CUE.search(before_clause)
-        if prn_before and not reject_if_scope_crosses(before_clause[prn_before.end() :]):
+        if (
+            prn_before
+            and not reject_if_scope_crosses(before_clause[prn_before.end() :])
+            and (
+                not site_adaptation_enabled()
+                or len(clean_between(before_clause[prn_before.end() :]))
+                <= scope_limit("conditional", "before_gap_chars", 110)
+            )
+        ):
             return True, "prn_before_target"
 
         cond_after = CONDITION_CUE.search(after_clause)
@@ -737,7 +826,7 @@ def has_conditional(text: str, span: str, category: str = "") -> tuple[bool, str
             middle = before_clause[cond_before.end() :]
             if not reject_if_scope_crosses(middle):
                 action_near = CONDITIONAL_ACTION.search(middle)
-                if action_near and action_near.start() < 110:
+                if action_near and action_near.start() < scope_limit("conditional", "before_gap_chars", 110):
                     return True, "condition_before_action_target"
     return False, "no_conditional"
 
@@ -745,15 +834,21 @@ def has_conditional(text: str, span: str, category: str = "") -> tuple[bool, str
 def has_hypothetical(text: str, span: str) -> tuple[bool, str]:
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 180) : start]
-        after = text[end : min(len(text), end + 120)]
+        before = scoped_before(text, start, "hypothetical", 180)
+        after = scoped_after(text, end, "hypothetical", 120)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[.;\n]", after)[0]
         cue = HYPOTHETICAL_CUE.search(before_clause)
-        if cue and cue_before_scopes_to_target(before_clause[cue.end() :]):
+        if cue and cue_before_scopes_to_target(
+            before_clause[cue.end() :],
+            max_chars=scope_limit("hypothetical", "before_gap_chars", 90),
+        ):
             return True, "hypothetical_before_target"
         cue = HYPOTHETICAL_AFTER_CUE.search(after_clause)
-        if cue and cue_is_immediate_postmodifier(after_clause[: cue.start()]):
+        if cue and cue_is_immediate_postmodifier(
+            after_clause[: cue.start()],
+            max_chars=scope_limit("hypothetical", "after_gap_chars", 14),
+        ):
             return True, "hypothetical_after_target"
     return False, "no_hypothetical"
 
@@ -761,19 +856,28 @@ def has_hypothetical(text: str, span: str) -> tuple[bool, str]:
 def has_possible(text: str, span: str, category: str = "") -> tuple[bool, str]:
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 160) : start]
-        after = text[end : min(len(text), end + 120)]
+        before = scoped_before(text, start, "possible", 160)
+        after = scoped_after(text, end, "possible", 120)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[.;\n]", after)[0]
         if category in {"disease_or_diagnosis", "finding"}:
             eval_cue = EVALUATION_POSSIBLE_CUE.search(before_clause)
-            if eval_cue and cue_before_scopes_to_target(before_clause[eval_cue.end() :]):
+            if eval_cue and cue_before_scopes_to_target(
+                before_clause[eval_cue.end() :],
+                max_chars=scope_limit("possible", "before_gap_chars", 90),
+            ):
                 return True, "evaluation_possible_before_target"
         cue = POSSIBLE_CUE.search(before_clause)
-        if cue and cue_before_scopes_to_target(before_clause[cue.end() :]):
+        if cue and cue_before_scopes_to_target(
+            before_clause[cue.end() :],
+            max_chars=scope_limit("possible", "before_gap_chars", 90),
+        ):
             return True, "possible_before_target"
         cue = POSSIBLE_AFTER_CUE.search(after_clause)
-        if cue and cue_is_immediate_postmodifier(after_clause[: cue.start()], max_chars=10):
+        if cue and cue_is_immediate_postmodifier(
+            after_clause[: cue.start()],
+            max_chars=scope_limit("possible", "after_gap_chars", 10),
+        ):
             return True, "possible_after_target"
     return False, "no_possible"
 
@@ -781,12 +885,18 @@ def has_possible(text: str, span: str, category: str = "") -> tuple[bool, str]:
 def has_if_antecedent_status(text: str, span: str, category: str) -> tuple[str, str]:
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 130) : start]
-        after = text[end : min(len(text), end + 120)]
+        before = scoped_before(text, start, "conditional", 130)
+        after = scoped_after(text, end, "conditional", 120)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[,.;\n]", after)[0]
         cue = CONDITION_CUE.search(before_clause)
         if not cue or reject_if_scope_crosses(before_clause[cue.end() :]):
+            continue
+        if (
+            site_adaptation_enabled()
+            and len(clean_between(before_clause[cue.end() :]))
+            > scope_limit("conditional", "before_gap_chars", 110)
+        ):
             continue
         if category == "procedure":
             return "hypothetical", "if_antecedent_procedure"
@@ -805,8 +915,8 @@ def has_historical(text: str, span: str, category: str) -> tuple[bool, str]:
         explicit_only = False
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 170) : start]
-        after = text[end : min(len(text), end + 80)]
+        before = scoped_before(text, start, "historical", 170)
+        after = scoped_after(text, end, "historical", 80)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[.;\n]", after)[0]
         target_is_event_or_procedure = is_procedure_like(span, category) or span_key in EVENT_HISTORY_TERMS
@@ -816,6 +926,7 @@ def has_historical(text: str, span: str, category: str) -> tuple[bool, str]:
                 cue_before_scopes_to_target(
                     hist_middle,
                     target_is_event_or_procedure=target_is_event_or_procedure,
+                    max_chars=scope_limit("historical", "before_gap_chars", 90),
                 )
                 and not CURRENT_TRANSITION.search(hist_middle)
                 and not (span_key in CHRONIC_PRESENT_TERMS and clean_between(hist_middle))
@@ -825,10 +936,21 @@ def has_historical(text: str, span: str, category: str) -> tuple[bool, str]:
         if HISTORICAL_AFTER_PATTERN.search(after_clause):
             return True, "explicit_historical_after_temporal"
         for hist in HISTORICAL_CUE.finditer(after_clause):
-            if cue_is_immediate_postmodifier(after_clause[: hist.start()], max_chars=14):
+            if cue_is_immediate_postmodifier(
+                after_clause[: hist.start()],
+                max_chars=scope_limit("historical", "after_gap_chars", 14),
+            ):
                 return True, "explicit_historical_after"
         hx = HISTORY_OF.search(before_clause)
-        if hx and not reject_if_scope_crosses(before_clause[hx.end() :]):
+        if (
+            hx
+            and not reject_if_scope_crosses(before_clause[hx.end() :])
+            and (
+                not site_adaptation_enabled()
+                or len(clean_between(before_clause[hx.end() :]))
+                <= scope_limit("historical", "before_gap_chars", 90)
+            )
+        ):
             if CURRENT_TRANSITION.search(before_clause[hx.end() :]):
                 continue
             if is_procedure_like(span, category) or span_key in EVENT_HISTORY_TERMS:
@@ -854,15 +976,26 @@ def has_current(text: str, span: str) -> tuple[bool, str]:
         return True, "normal_present_finding"
     for occ in target_occurrences(text, span):
         start, end = occ.span()
-        before = text[max(0, start - 150) : start]
-        after = text[end : min(len(text), end + 80)]
+        before = scoped_before(text, start, "current", 150)
+        after = scoped_after(text, end, "current", 80)
         before_clause = re.split(r"[.;\n]", before)[-1]
         after_clause = re.split(r"[.;\n]", after)[0]
         cue = CURRENT_CUE.search(before_clause)
-        if cue and not reject_if_scope_crosses(before_clause[cue.end() :]):
+        if (
+            cue
+            and not reject_if_scope_crosses(before_clause[cue.end() :])
+            and (
+                not site_adaptation_enabled()
+                or len(clean_between(before_clause[cue.end() :]))
+                <= scope_limit("current", "before_gap_chars", 90)
+            )
+        ):
             return True, "current_before_target"
         cue = CURRENT_CUE.search(after_clause)
-        if cue and cue_is_immediate_postmodifier(after_clause[: cue.start()], max_chars=20):
+        if cue and cue_is_immediate_postmodifier(
+            after_clause[: cue.start()],
+            max_chars=scope_limit("current", "after_gap_chars", 20),
+        ):
             return True, "current_after_target"
     return False, "no_current"
 
@@ -1004,7 +1137,10 @@ def main() -> int:
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--summary-json", required=True)
+    parser.add_argument("--site-profile", help="Optional frozen site_profile.json")
     args = parser.parse_args()
+
+    configure_site_profile(args.site_profile)
 
     total = 0
     changed = 0
@@ -1040,6 +1176,8 @@ def main() -> int:
         "new_assertion_counts": dict(new_counts),
         "change_counts": dict(change_counts.most_common()),
         "reason_counts": dict(reason_counts.most_common()),
+        "site_profile": args.site_profile,
+        "adaptation_mode": ACTIVE_SITE_PROFILE["adaptation_mode"],
     }
     summary_path = Path(args.summary_json)
     summary_path.parent.mkdir(parents=True, exist_ok=True)

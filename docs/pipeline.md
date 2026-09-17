@@ -54,6 +54,11 @@ than applying a cue to an entire sentence. It separates present, absent,
 possible, conditional, hypothetical, and historical mentions across clauses,
 lists, sections, family context, and coordinated concepts.
 
+An optional site profile can set separate bounded windows for negation,
+possibility, conditional, hypothetical, historical, current, and uncertain
+cues. Punctuation, clause, list, and section boundaries are evaluated before
+distance. Measurement scope is adapted separately from assertion scope.
+
 ## 5. Final Refinement
 
 `scripts/refine_tracka_candidates.py` resolves remaining exact-boundary,

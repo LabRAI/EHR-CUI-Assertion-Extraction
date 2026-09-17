@@ -15,6 +15,8 @@ It expects private note shards, a licensed MedCAT modelpack, and its CDB. The ru
 - uses MedCAT batched `get_entities_multi_texts` inside each worker;
 - applies measurement, conservative ontology, assertion-scope, and final
   boundary/category refinement;
+- optionally applies a frozen CPU-generated site profile to local assertion
+  and measurement scope;
 - writes a final run manifest and stage-level summaries;
 - blocks restricted clinical-data runs outside SLURM unless `--allow-no-slurm`
   is explicitly used for synthetic smoke tests.
@@ -36,6 +38,16 @@ By default, the runner uses all CPU cores assigned by SLURM. To cap usage:
 ```bash
 python3 scripts/run_final_extraction.py ... --workers 4
 ```
+
+To use a profile built only from the site's calibration split:
+
+```bash
+python3 scripts/run_final_extraction.py ... \
+  --site-profile /private/config/site_profile.json
+```
+
+The manifest records the adaptation mode and profile SHA-256. Omit
+`--site-profile` to reproduce the frozen default exactly.
 
 For many shards, pass `--notes-jsonl-gz` multiple times:
 

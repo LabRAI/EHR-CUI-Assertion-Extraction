@@ -13,6 +13,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
+from site_profile import load_site_profile, profile_sha256
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -30,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--medcat-batch-size-chars", type=int, default=1_000_000)
     parser.add_argument("--progress-every", type=int, default=1000)
     parser.add_argument("--keep-selected-notes", action="store_true")
+    parser.add_argument("--site-profile", help="Optional frozen site_profile.json built on calibration notes")
     parser.add_argument("--allow-no-slurm", action="store_true", help="Synthetic/local testing only")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -106,6 +109,7 @@ def main() -> int:
         return 2
 
     script_dir = Path(__file__).resolve().parent
+    site_profile = load_site_profile(args.site_profile)
     output_root = Path(args.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     output_root.chmod(0o700)
@@ -166,16 +170,17 @@ def main() -> int:
     reports.mkdir(parents=True, exist_ok=True)
     reports.chmod(0o700)
 
-    run(
-        [
-            sys.executable, str(script_dir / "add_medcat_measurement_overlay.py"),
-            "--notes-jsonl-gz", str(selected_notes),
-            "--candidate-jsonl", str(linked_candidates),
-            "--output-dir", str(measurement),
-            "--summary-json", str(reports / "measurement_summary.json"),
-            "--name", args.variant_name,
-        ]
-    )
+    measurement_command = [
+        sys.executable, str(script_dir / "add_medcat_measurement_overlay.py"),
+        "--notes-jsonl-gz", str(selected_notes),
+        "--candidate-jsonl", str(linked_candidates),
+        "--output-dir", str(measurement),
+        "--summary-json", str(reports / "measurement_summary.json"),
+        "--name", args.variant_name,
+    ]
+    if args.site_profile:
+        measurement_command.extend(["--site-profile", args.site_profile])
+    run(measurement_command)
     ontology_command = [
         sys.executable, str(script_dir / "add_medcat_cdb_ontology_overlay.py"),
         "--cdb-path", args.cdb_path,
@@ -188,14 +193,15 @@ def main() -> int:
     if args.allow_no_slurm:
         ontology_command.append("--allow-no-slurm")
     run(ontology_command)
-    run(
-        [
-            sys.executable, str(script_dir / "apply_assertion_scope_overlay.py"),
-            "--input", str(ontology / "medcat_candidates.jsonl.gz"),
-            "--output", str(assertion / "medcat_candidates.jsonl.gz"),
-            "--summary-json", str(reports / "assertion_summary.json"),
-        ]
-    )
+    assertion_command = [
+        sys.executable, str(script_dir / "apply_assertion_scope_overlay.py"),
+        "--input", str(ontology / "medcat_candidates.jsonl.gz"),
+        "--output", str(assertion / "medcat_candidates.jsonl.gz"),
+        "--summary-json", str(reports / "assertion_summary.json"),
+    ]
+    if args.site_profile:
+        assertion_command.extend(["--site-profile", args.site_profile])
+    run(assertion_command)
     run(
         [
             sys.executable, str(script_dir / "refine_tracka_candidates.py"),
@@ -216,6 +222,8 @@ def main() -> int:
         "linker_output_mode": config.get("output_mode"),
         "selected_notes": selected_count,
         "linked_candidate_rows": linked_rows,
+        "site_adaptation_mode": site_profile["adaptation_mode"],
+        "site_profile_sha256": profile_sha256(args.site_profile),
         "final_candidates": str(final / "medcat_candidates.jsonl.gz"),
         "reports": str(reports),
     }
