@@ -21,9 +21,10 @@ patient text.
 ## For Collaborators
 
 If you are using this package to run extraction at another site, start with
-[`docs/genie_handoff.md`](docs/genie_handoff.md). It gives the shortest complete
-path from a fresh clone to a local smoke test and then to a private extraction
-run.
+[`docs/harvard_quickstart.md`](docs/harvard_quickstart.md). It gives the
+shortest complete path from a fresh clone to a private extraction run using one
+validated config file. The longer [`docs/genie_handoff.md`](docs/genie_handoff.md)
+documents the individual stages.
 
 For the current validation scope and limitations, see
 [`docs/validation.md`](docs/validation.md).
@@ -57,8 +58,12 @@ raw linker output.
 configs/
   extraction_schema.json                 # final pair schema
   linker_filter_policy.example.json      # sanitized schema-aware filter policy
+  collaborator_run.example.json          # one-config collaborator preset
+  collaborator_run.schema.json           # config contract and ranges
   site_profile.schema.json               # optional CPU site-adaptation contract
+  site_profile.example.json              # distance settings template
 docs/
+  harvard_quickstart.md                  # short collaborator start guide
   genie_handoff.md                       # external collaborator run guide
   data_and_license.md                    # restricted-data handling notes
   pipeline.md                            # stage-by-stage extraction workflow
@@ -66,6 +71,7 @@ docs/
 examples/
   toy_notes.jsonl                        # synthetic notes only
 scripts/
+  run_collaborator.py                    # one-config collaborator entry point
   run_final_extraction.py                # complete validated extraction stack
   build_site_profile.py                  # aggregate local layout/distance profiler
   run_extraction_auto.py                 # linker-only auto CPU runner

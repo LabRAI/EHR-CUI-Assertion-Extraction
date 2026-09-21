@@ -1,0 +1,57 @@
+{
+  "$schema": "./collaborator_run.schema.json",
+  "schema_name": "ehr_cui_assertion_collaborator_run",
+  "schema_version": 1,
+  "preset": "validated_harvard_v1",
+  "inputs": {
+    "notes_jsonl": [
+      "<PRIVATE_NOTES_JSONL_OR_JSONL_GZ>"
+    ],
+    "medcat_modelpack": "<LICENSED_MEDCAT_MODELPACK_ZIP>",
+    "medcat_cdb": "<LICENSED_MEDCAT_CDB_PATH>",
+    "filter_policy": "./linker_filter_policy.example.json",
+    "output_root": "<PRIVATE_OUTPUT_DIRECTORY>"
+  },
+  "execution": {
+    "run_name": "harvard_round2",
+    "workers": 0,
+    "notes_per_task": 0,
+    "max_notes": 0,
+    "progress_every": 1000,
+    "keep_selected_notes": false,
+    "allow_no_slurm": false
+  },
+  "hyperparameters": {
+    "linker": {
+      "max_note_chars": 7000,
+      "minimum_confidence": 0.0,
+      "pre_umls_min_keep_score": 0.99,
+      "sentence_chars": 420,
+      "context_chars": 650,
+      "medcat_batch_size": -1,
+      "medcat_batch_size_chars": 1000000,
+      "gzip_compresslevel": 1
+    },
+    "ontology": {
+      "max_words": 8,
+      "overlap_mode": "add_missing",
+      "allow_broad_single_word": false
+    },
+    "refinement": {
+      "strictness": "aggressive",
+      "strict_gate": true,
+      "boundary_ranker": true,
+      "anchor_rescue": true,
+      "assertion_judge": true
+    }
+  },
+  "site_adaptation": {
+    "mode": "frozen_default",
+    "profile_path": null,
+    "builder": {
+      "quantile": 0.95,
+      "minimum_observations": 25,
+      "max_notes": 0
+    }
+  }
+}

@@ -28,11 +28,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--notes-per-task", type=int, default=0)
     parser.add_argument("--max-notes", type=int, default=0)
     parser.add_argument("--max-note-chars", type=int, default=7000)
+    parser.add_argument("--linker-min-acc", type=float, default=0.0)
+    parser.add_argument("--pre-umls-min-keep-score", type=float, default=0.99)
+    parser.add_argument("--sentence-chars", type=int, default=420)
+    parser.add_argument("--context-chars", type=int, default=650)
     parser.add_argument("--medcat-batch-size", type=int, default=-1)
     parser.add_argument("--medcat-batch-size-chars", type=int, default=1_000_000)
+    parser.add_argument("--gzip-compresslevel", type=int, default=1)
     parser.add_argument("--progress-every", type=int, default=1000)
+    parser.add_argument("--ontology-max-words", type=int, default=8)
+    parser.add_argument(
+        "--ontology-overlap-mode",
+        choices=["replace", "add_missing"],
+        default="add_missing",
+    )
+    parser.add_argument("--ontology-allow-broad-single-word", action="store_true")
+    parser.add_argument(
+        "--refinement-strictness",
+        choices=["conservative", "aggressive"],
+        default="aggressive",
+    )
+    parser.add_argument("--disable-refinement-strict-gate", action="store_true")
+    parser.add_argument("--disable-boundary-ranker", action="store_true")
+    parser.add_argument("--disable-anchor-rescue", action="store_true")
+    parser.add_argument("--disable-assertion-judge", action="store_true")
     parser.add_argument("--keep-selected-notes", action="store_true")
     parser.add_argument("--site-profile", help="Optional frozen site_profile.json built on calibration notes")
+    parser.add_argument("--deployment-config-sha256", help="SHA-256 of the collaborator run config")
     parser.add_argument("--allow-no-slurm", action="store_true", help="Synthetic/local testing only")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -130,9 +152,14 @@ def main() -> int:
             "--notes-per-task", str(args.notes_per_task),
             "--max-notes", str(args.max_notes),
             "--max-note-chars", str(args.max_note_chars),
+            "--min-acc", str(args.linker_min_acc),
+            "--pre-umls-min-keep-score", str(args.pre_umls_min_keep_score),
+            "--sentence-chars", str(args.sentence_chars),
+            "--context-chars", str(args.context_chars),
             "--output-mode", "all_non_rejected",
             "--medcat-batch-size", str(args.medcat_batch_size),
             "--medcat-batch-size-chars", str(args.medcat_batch_size_chars),
+            "--gzip-compresslevel", str(args.gzip_compresslevel),
             "--progress-every", str(args.progress_every),
         ]
     )
@@ -188,8 +215,11 @@ def main() -> int:
         "--candidate-jsonl", str(measurement / "medcat_candidates.jsonl.gz"),
         "--output-dir", str(ontology),
         "--summary-json", str(reports / "ontology_summary.json"),
-        "--overlap-mode", "add_missing",
+        "--max-words", str(args.ontology_max_words),
+        "--overlap-mode", args.ontology_overlap_mode,
     ]
+    if args.ontology_allow_broad_single_word:
+        ontology_command.append("--allow-broad-single-word")
     if args.allow_no_slurm:
         ontology_command.append("--allow-no-slurm")
     run(ontology_command)
@@ -202,17 +232,24 @@ def main() -> int:
     if args.site_profile:
         assertion_command.extend(["--site-profile", args.site_profile])
     run(assertion_command)
-    run(
-        [
-            sys.executable, str(script_dir / "refine_tracka_candidates.py"),
-            "--notes-jsonl-gz", str(selected_notes),
-            "--candidate-jsonl", str(assertion / "medcat_candidates.jsonl.gz"),
-            "--output-dir", str(final),
-            "--summary-json", str(reports / "final_refinement_summary.json"),
-            "--name", args.variant_name,
-            "--strictness", "aggressive",
-        ]
-    )
+    refinement_command = [
+        sys.executable, str(script_dir / "refine_tracka_candidates.py"),
+        "--notes-jsonl-gz", str(selected_notes),
+        "--candidate-jsonl", str(assertion / "medcat_candidates.jsonl.gz"),
+        "--output-dir", str(final),
+        "--summary-json", str(reports / "final_refinement_summary.json"),
+        "--name", args.variant_name,
+        "--strictness", args.refinement_strictness,
+    ]
+    for disabled, flag in (
+        (args.disable_refinement_strict_gate, "--disable-strict-gate"),
+        (args.disable_boundary_ranker, "--disable-boundary-ranker"),
+        (args.disable_anchor_rescue, "--disable-anchor-rescue"),
+        (args.disable_assertion_judge, "--disable-assertion-judge"),
+    ):
+        if disabled:
+            refinement_command.append(flag)
+    run(refinement_command)
 
     manifest = {
         "pipeline": "final_extraction_v1",
@@ -224,6 +261,31 @@ def main() -> int:
         "linked_candidate_rows": linked_rows,
         "site_adaptation_mode": site_profile["adaptation_mode"],
         "site_profile_sha256": profile_sha256(args.site_profile),
+        "deployment_config_sha256": args.deployment_config_sha256,
+        "hyperparameters": {
+            "linker": {
+                "max_note_chars": args.max_note_chars,
+                "minimum_confidence": args.linker_min_acc,
+                "pre_umls_min_keep_score": args.pre_umls_min_keep_score,
+                "sentence_chars": args.sentence_chars,
+                "context_chars": args.context_chars,
+                "medcat_batch_size": args.medcat_batch_size,
+                "medcat_batch_size_chars": args.medcat_batch_size_chars,
+                "gzip_compresslevel": args.gzip_compresslevel,
+            },
+            "ontology": {
+                "max_words": args.ontology_max_words,
+                "overlap_mode": args.ontology_overlap_mode,
+                "allow_broad_single_word": args.ontology_allow_broad_single_word,
+            },
+            "refinement": {
+                "strictness": args.refinement_strictness,
+                "strict_gate": not args.disable_refinement_strict_gate,
+                "boundary_ranker": not args.disable_boundary_ranker,
+                "anchor_rescue": not args.disable_anchor_rescue,
+                "assertion_judge": not args.disable_assertion_judge,
+            },
+        },
         "final_candidates": str(final / "medcat_candidates.jsonl.gz"),
         "reports": str(reports),
     }

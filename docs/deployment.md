@@ -49,6 +49,11 @@ python3 scripts/run_final_extraction.py ... \
 The manifest records the adaptation mode and profile SHA-256. Omit
 `--site-profile` to reproduce the frozen default exactly.
 
+For the collaborator-facing one-config entry point, use
+`docs/harvard_quickstart.md` and `scripts/run_collaborator.py`. It exposes the
+validated linker, ontology, refinement, CPU, batch, and site-distance settings
+without requiring edits to the extraction scripts.
+
 For many shards, pass `--notes-jsonl-gz` multiple times:
 
 ```bash

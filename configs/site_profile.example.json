@@ -1,0 +1,59 @@
+{
+  "$schema": "./site_profile.schema.json",
+  "schema_name": "ehr_cui_assertion_site_profile",
+  "schema_version": 1,
+  "adaptation_mode": "unlabeled_structural_bounded",
+  "assertion_scopes": {
+    "negation": {
+      "before_chars": 150,
+      "after_chars": 90,
+      "before_gap_chars": 120,
+      "after_gap_chars": 20
+    },
+    "conditional": {
+      "before_chars": 170,
+      "after_chars": 130,
+      "before_gap_chars": 110,
+      "after_gap_chars": 28
+    },
+    "possible": {
+      "before_chars": 160,
+      "after_chars": 120,
+      "before_gap_chars": 90,
+      "after_gap_chars": 10
+    },
+    "hypothetical": {
+      "before_chars": 180,
+      "after_chars": 120,
+      "before_gap_chars": 90,
+      "after_gap_chars": 14
+    },
+    "historical": {
+      "before_chars": 170,
+      "after_chars": 80,
+      "before_gap_chars": 90,
+      "after_gap_chars": 14
+    },
+    "current": {
+      "before_chars": 150,
+      "after_chars": 80,
+      "before_gap_chars": 90,
+      "after_gap_chars": 20
+    },
+    "uncertain": {
+      "before_chars": 120,
+      "after_chars": 120,
+      "before_gap_chars": 90,
+      "after_gap_chars": 60
+    }
+  },
+  "measurement_scope": {
+    "before_chars": 90,
+    "after_chars": 130
+  },
+  "safeguards": {
+    "scope_boundaries_before_distance": true,
+    "unlabeled_profile_never_expands_frozen_windows": true,
+    "requires_held_out_regression_check": true
+  }
+}

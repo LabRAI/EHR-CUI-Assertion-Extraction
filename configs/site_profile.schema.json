@@ -5,6 +5,7 @@
   "type": "object",
   "required": ["schema_name", "schema_version", "assertion_scopes", "measurement_scope"],
   "properties": {
+    "$schema": {"type": "string"},
     "schema_name": {"const": "ehr_cui_assertion_site_profile"},
     "schema_version": {"const": 1},
     "adaptation_mode": {

@@ -18,6 +18,7 @@ SITE_ADAPTATION_MODES = {
     "site_adaptive_bounded",
 }
 PROFILE_KEYS = {
+    "$schema",
     "schema_name",
     "schema_version",
     "adaptation_mode",
@@ -97,6 +98,11 @@ def resolve_site_profile(raw: dict[str, Any] | None) -> dict[str, Any]:
             resolved["assertion_scopes"][family][key] = _validated_int(
                 value, f"assertion_scopes.{family}.{key}", _ASSERTION_LIMITS[key]
             )
+            if resolved["assertion_scopes"][family][key] > DEFAULT_ASSERTION_SCOPES[family][key]:
+                raise ValueError(
+                    f"site profile cannot expand frozen {family}.{key}; "
+                    f"maximum is {DEFAULT_ASSERTION_SCOPES[family][key]}"
+                )
 
     measurement_scope = raw.get("measurement_scope") or {}
     if not isinstance(measurement_scope, dict):
@@ -107,6 +113,11 @@ def resolve_site_profile(raw: dict[str, Any] | None) -> dict[str, Any]:
         resolved["measurement_scope"][key] = _validated_int(
             value, f"measurement_scope.{key}", _MEASUREMENT_LIMITS[key]
         )
+        if resolved["measurement_scope"][key] > DEFAULT_MEASUREMENT_SCOPE[key]:
+            raise ValueError(
+                f"site profile cannot expand frozen measurement_scope.{key}; "
+                f"maximum is {DEFAULT_MEASUREMENT_SCOPE[key]}"
+            )
 
     resolved["adaptation_mode"] = mode
     return resolved

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LabRAI/EHR-CUI-Assertion-Extraction/configs/collaborator_run.schema.json",
+  "title": "EHR extraction collaborator run configuration",
+  "type": "object",
+  "required": ["schema_name", "schema_version", "preset", "inputs", "execution", "hyperparameters", "site_adaptation"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_name": {"const": "ehr_cui_assertion_collaborator_run"},
+    "schema_version": {"const": 1},
+    "preset": {"const": "validated_harvard_v1"},
+    "inputs": {
+      "type": "object",
+      "required": ["notes_jsonl", "medcat_modelpack", "medcat_cdb", "filter_policy", "output_root"],
+      "additionalProperties": false,
+      "properties": {
+        "notes_jsonl": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "medcat_modelpack": {"type": "string"},
+        "medcat_cdb": {"type": "string"},
+        "filter_policy": {"type": "string"},
+        "output_root": {"type": "string"}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["run_name", "workers", "notes_per_task", "max_notes", "progress_every", "keep_selected_notes", "allow_no_slurm"],
+      "additionalProperties": false,
+      "properties": {
+        "run_name": {"type": "string"},
+        "workers": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "notes_per_task": {"type": "integer", "minimum": 0},
+        "max_notes": {"type": "integer", "minimum": 0},
+        "progress_every": {"type": "integer", "minimum": 1},
+        "keep_selected_notes": {"type": "boolean"},
+        "allow_no_slurm": {"type": "boolean"}
+      }
+    },
+    "hyperparameters": {
+      "type": "object",
+      "required": ["linker", "ontology", "refinement"],
+      "additionalProperties": false,
+      "properties": {
+        "linker": {"type": "object"},
+        "ontology": {"type": "object"},
+        "refinement": {"type": "object"}
+      }
+    },
+    "site_adaptation": {
+      "type": "object",
+      "required": ["mode", "profile_path", "builder"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"enum": ["frozen_default", "profile_file"]},
+        "profile_path": {"type": ["string", "null"]},
+        "builder": {"type": "object"}
+      }
+    }
+  }
+}
