@@ -17,6 +17,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+The release was regression-tested with Python 3.10.8 and the dependency
+versions pinned in `requirements.txt`.
+
 Open `slurm/templates/run_harvard_default.sbatch` and fill only:
 
 ```text
@@ -50,6 +53,20 @@ The wrapper fixes the validated production choices:
 
 No Python source file needs to be edited. The wrapper rejects missing paths and
 refuses restricted-data execution outside SLURM.
+
+## Validated Reference
+
+The tagged release was rerun end to end on the frozen 240-note MIMIC-style
+regression set using 4 CPU cores. Its 5,405 final rows matched the validated
+reference row-for-row after canonicalization. The reproduced metrics were:
+
+```text
+Entity exact F1       0.9143
+Entity relaxed F1     0.9266
+Assertion macro-F1    0.9437
+Value bundle          0.8462
+Numeric value         1.0000
+```
 
 ## Outputs
 

@@ -11,9 +11,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "run_harvard_default.py"
+REQUIREMENTS = ROOT / "requirements.txt"
 
 
 class HarvardDefaultWrapperTests(unittest.TestCase):
+    def test_validated_dependencies_are_pinned(self) -> None:
+        requirements = REQUIREMENTS.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(
+            requirements,
+            [
+                "medcat==2.8.6",
+                "spacy==3.8.14",
+                "numpy==2.2.6",
+                "matplotlib==3.10.9",
+            ],
+        )
+
     def test_missing_asset_is_a_single_actionable_error(self) -> None:
         result = subprocess.run(
             [
