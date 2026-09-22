@@ -64,6 +64,7 @@ configs/
   site_profile.example.json              # distance settings template
 docs/
   harvard_quickstart.md                  # short collaborator start guide
+  pre_loop_handoff.md                    # pinned release and performance handoff
   genie_handoff.md                       # external collaborator run guide
   data_and_license.md                    # restricted-data handling notes
   pipeline.md                            # stage-by-stage extraction workflow
