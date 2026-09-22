@@ -1,0 +1,69 @@
+# Harvard Default Handoff
+
+This is the fixed extraction release for the second-round Harvard evaluation.
+There is one entry point and one run; no extra tuning is required.
+
+## Run Once
+
+Clone the handoff branch/tag, install the dependencies, and stage the licensed
+MedCAT assets outside the repository:
+
+```bash
+git clone --branch harvard-default-handoff-20260922 \
+  https://github.com/LabRAI/EHR-CUI-Assertion-Extraction.git
+cd EHR-CUI-Assertion-Extraction
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Open `slurm/templates/run_harvard_default.sbatch` and fill only:
+
+```text
+NOTES_JSONL_GZ
+MODELPACK
+CDB_PATH
+```
+
+Then submit once from the repository directory:
+
+```bash
+sbatch slurm/templates/run_harvard_default.sbatch
+```
+
+The template uses 4 CPU cores, 68 GB RAM, and automatic CPU worker detection.
+The output directory defaults to `./harvard_default_output`; set
+`OUTPUT_ROOT=/private/output/path` at submission time if desired.
+
+## Fixed Presettings
+
+The wrapper fixes the validated production choices:
+
+- packaged schema-aware linker filter policy;
+- all non-rejected candidates for downstream stages;
+- batched MedCAT inference with a 1,000,000-character batch budget;
+- 7,000-character maximum note length;
+- ontology overlap mode `add_missing`;
+- aggressive final refinement;
+- compressed streaming output;
+- no LLM and no GPU.
+
+No Python source file needs to be edited. The wrapper rejects missing paths and
+refuses restricted-data execution outside SLURM.
+
+## Outputs
+
+The final records are written to:
+
+```text
+<OUTPUT_ROOT>/variant_harvard_default/05_final/medcat_candidates.jsonl.gz
+```
+
+The main run manifest is:
+
+```text
+<OUTPUT_ROOT>/variant_harvard_default/final_pipeline_manifest.json
+```
+
+Share only aggregate manifests and summaries for troubleshooting. Keep notes,
+candidate files, modelpacks, CDB files, and evidence windows private.

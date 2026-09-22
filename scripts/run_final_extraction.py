@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the validated extraction stack with adaptive CPU linking."""
+"""Run the validated fixed extraction stack."""
 
 from __future__ import annotations
 

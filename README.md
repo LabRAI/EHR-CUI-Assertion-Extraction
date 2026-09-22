@@ -20,10 +20,9 @@ patient text.
 
 ## For Collaborators
 
-If you are using this package to run extraction at another site, start with
-[`docs/genie_handoff.md`](docs/genie_handoff.md). It gives the shortest complete
-path from a fresh clone to a local smoke test and then to a private extraction
-run.
+If you are using this package to run extraction at Harvard, start with
+[`docs/harvard_default_handoff.md`](docs/harvard_default_handoff.md). It is a
+fixed one-run handoff: fill three local paths in one SLURM template and submit.
 
 For the current validation scope and limitations, see
 [`docs/validation.md`](docs/validation.md).
@@ -58,6 +57,7 @@ configs/
   extraction_schema.json                 # final pair schema
   linker_filter_policy.example.json      # sanitized schema-aware filter policy
 docs/
+  harvard_default_handoff.md             # one-run external collaborator guide
   genie_handoff.md                       # external collaborator run guide
   data_and_license.md                    # restricted-data handling notes
   pipeline.md                            # stage-by-stage extraction workflow
@@ -65,6 +65,7 @@ docs/
 examples/
   toy_notes.jsonl                        # synthetic notes only
 scripts/
+  run_harvard_default.py                 # fixed Harvard entry point
   run_final_extraction.py                # complete validated extraction stack
   run_extraction_auto.py                 # linker-only auto CPU runner
   shard_mimic_notes.py                   # local restricted-note sharding

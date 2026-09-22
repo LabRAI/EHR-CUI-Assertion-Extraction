@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Adaptive CPU runner for the MedCAT candidate-linking stage.
+"""Automatic CPU runner for the MedCAT candidate-linking stage.
 
 The script detects available CPU cores, builds an explicit task config, and
 dispatches the optimized prefork extractor. Use run_final_extraction.py for the
