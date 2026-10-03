@@ -16,10 +16,11 @@ import gzip
 import json
 import os
 import random
-import re
+import cached_regex as re
 import sys
 import zipfile
 from collections import Counter, defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -1184,18 +1185,24 @@ def infer_local_value_status(context: str, start: int | None = None, end: int | 
     return infer_value_status(local)
 
 
-def all_known_lab_aliases() -> list[str]:
+@lru_cache(maxsize=1)
+def _known_lab_aliases() -> tuple[str, ...]:
     aliases: set[str] = set(LAB_ALIASES)
     for values in LAB_ALIASES.values():
         aliases.update(values)
-    return sorted((alias for alias in aliases if alias), key=len, reverse=True)
+    return tuple(sorted((alias for alias in aliases if alias), key=len, reverse=True))
 
 
+def all_known_lab_aliases() -> list[str]:
+    return list(_known_lab_aliases())
+
+
+@lru_cache(maxsize=8192)
 def leading_lab_alias(span: str) -> str | None:
     span_key = norm_key(span)
     if not span_key:
         return None
-    for alias in all_known_lab_aliases():
+    for alias in _known_lab_aliases():
         if span_key == alias or span_key.startswith(f"{alias} "):
             return alias
     return None
@@ -1609,7 +1616,8 @@ def infer_value_status_from_match(
     return "unknown"
 
 
-def aliases_for_lab(span: str, pretty_name: str) -> list[str]:
+@lru_cache(maxsize=8192)
+def _aliases_for_lab(span: str, pretty_name: str) -> tuple[str, ...]:
     candidates = [norm_key(span), norm_key(pretty_name)]
     aliases = []
     for candidate in candidates:
@@ -1622,7 +1630,11 @@ def aliases_for_lab(span: str, pretty_name: str) -> list[str]:
             aliases.append(leading_alias)
             aliases.extend(LAB_ALIASES.get(leading_alias, []))
     # Keep short aliases after longer aliases so "blood pressure" matches before "bp".
-    return sorted(set(a for a in aliases if a), key=len, reverse=True)
+    return tuple(sorted(set(a for a in aliases if a), key=len, reverse=True))
+
+
+def aliases_for_lab(span: str, pretty_name: str) -> list[str]:
+    return list(_aliases_for_lab(span, pretty_name))
 
 
 def context_with_marker(text: str, start: int, end: int, before: int = 260, after: int = 620) -> tuple[str, int, int]:

@@ -17,6 +17,7 @@ import random
 import sys
 import time
 from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -59,6 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--medcat-batch-size", type=int, default=-1)
     parser.add_argument("--medcat-batch-size-chars", type=int, default=1000000)
     parser.add_argument("--seed", type=int, default=20260604)
+    parser.add_argument("--ontology-lexicon-output", default="")
     parser.add_argument("--allow-no-slurm", action="store_true")
     return parser.parse_args()
 
@@ -644,9 +646,16 @@ def main() -> int:
     task_ids = sorted(tasks)
     run_start = int(time.time())
     ctx = mp.get_context("fork")
-    with ctx.Pool(processes=int(args.workers)) as pool:
-        results = pool.map(process_task, task_ids)
+    # A killed worker must fail the run, not leave Pool waiting for a lost task.
+    with ProcessPoolExecutor(max_workers=int(args.workers), mp_context=ctx) as pool:
+        results = list(pool.map(process_task, task_ids))
     run_end = int(time.time())
+
+    if args.ontology_lexicon_output:
+        from add_medcat_cdb_ontology_overlay import write_run_lexicon
+
+        model_dir = modelpack_path.with_suffix("") if modelpack_path.suffix == ".zip" else modelpack_path
+        write_run_lexicon(Path(args.ontology_lexicon_output), cat.cdb, model_dir / "cdb")
 
     # Make the shard-level timing files compatible with the existing fair-4CPU
     # reporter: batch wall time must include the single parent-side MedCAT load.

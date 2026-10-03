@@ -14,6 +14,7 @@ import json
 import os
 import re
 from collections import Counter, defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -244,6 +245,7 @@ def alias_patterns() -> dict[str, re.Pattern[str]]:
     return patterns
 
 
+@lru_cache(maxsize=1024)
 def spec_for_alias_key(alias_key: str) -> dict[str, Any] | None:
     if alias_key in TARGET_CONCEPTS:
         return TARGET_CONCEPTS[alias_key]

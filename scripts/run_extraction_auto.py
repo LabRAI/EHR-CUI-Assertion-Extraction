@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--medcat-batch-size", type=int, default=-1)
     parser.add_argument("--medcat-batch-size-chars", type=int, default=1_000_000)
     parser.add_argument("--seed", type=int, default=20260610)
+    parser.add_argument("--ontology-lexicon-output", default="")
     parser.add_argument("--delete-candidate-files", action="store_true", help="Delete large candidate JSONL.GZ files after stats are written")
     parser.add_argument("--allow-no-slurm", action="store_true", help="Developer/synthetic-data escape hatch")
     parser.add_argument("--dry-run", action="store_true", help="Write config and command without running extraction")
@@ -240,6 +241,8 @@ def main() -> int:
     ]
     if args.allow_no_slurm:
         cmd.append("--allow-no-slurm")
+    if args.ontology_lexicon_output:
+        cmd.extend(["--ontology-lexicon-output", args.ontology_lexicon_output])
 
     run_manifest = {
         "config_path": str(config_path),

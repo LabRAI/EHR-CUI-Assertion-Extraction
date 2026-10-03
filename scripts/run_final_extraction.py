@@ -43,7 +43,10 @@ def open_text(path: Path):
 
 def run(command: list[str]) -> None:
     print("[final-pipeline] " + " ".join(command), flush=True)
-    subprocess.run(command, check=True)
+    # MedCAT spelling ties depend on set iteration. Keep subprocesses consistent.
+    env = dict(os.environ)
+    env.setdefault("PYTHONHASHSEED", "20260610")
+    subprocess.run(command, check=True, env=env)
 
 
 def task_intervals(tasks: Iterable[dict[str, Any]]) -> dict[Path, list[tuple[int, int]]]:
@@ -110,6 +113,14 @@ def main() -> int:
     output_root.mkdir(parents=True, exist_ok=True)
     output_root.chmod(0o700)
 
+    model_path = Path(args.modelpack)
+    model_dir = model_path.with_suffix("") if model_path.suffix == ".zip" else model_path
+    shared_cdb = (model_dir / "cdb").resolve() == Path(args.cdb_path).resolve()
+    run_lexicon = output_root / f"variant_{args.variant_name}" / "_work" / "ontology_lexicon.jsonl.gz"
+    if shared_cdb and not args.dry_run:
+        # Always regenerate from this run's model; never reuse an old run artifact.
+        run_lexicon.unlink(missing_ok=True)
+
     linker_command = [
         sys.executable,
         str(script_dir / "run_extraction_auto.py"),
@@ -134,6 +145,8 @@ def main() -> int:
     )
     if args.allow_no_slurm:
         linker_command.append("--allow-no-slurm")
+    if shared_cdb:
+        linker_command.extend(["--ontology-lexicon-output", str(run_lexicon)])
     if args.dry_run:
         linker_command.append("--dry-run")
     run(linker_command)
@@ -187,6 +200,8 @@ def main() -> int:
     ]
     if args.allow_no_slurm:
         ontology_command.append("--allow-no-slurm")
+    if shared_cdb:
+        ontology_command.extend(["--lexicon-jsonl-gz", str(run_lexicon)])
     run(ontology_command)
     run(
         [
@@ -224,6 +239,8 @@ def main() -> int:
     manifest_path.chmod(0o600)
     if not args.keep_selected_notes:
         selected_notes.unlink(missing_ok=True)
+    if shared_cdb:
+        run_lexicon.unlink(missing_ok=True)
     print(json.dumps(manifest, indent=2, sort_keys=True), flush=True)
     return 0
 

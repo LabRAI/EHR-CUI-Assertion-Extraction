@@ -206,6 +206,7 @@ class TermEntry:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cdb-path", required=True, help="Path to licensed MedCAT CDB directory or CDB .dat/.zip")
+    parser.add_argument("--lexicon-jsonl-gz", default="", help="Lexicon exported from the same CDB in this run")
     parser.add_argument("--notes-jsonl-gz", action="append", required=True, help="Notes JSONL(.gz); repeat with matching --candidate-jsonl/--output-dir")
     parser.add_argument("--candidate-jsonl", action="append", required=True, help="Existing candidate JSONL(.gz) file or directory")
     parser.add_argument("--output-dir", action="append", required=True, help="Output directory; repeat for each input")
@@ -304,6 +305,10 @@ def choose_entry(old: TermEntry | None, new: TermEntry) -> TermEntry:
 
 def build_disease_lexicon(cdb_path: str, max_words: int, strict_single_word: bool) -> tuple[dict[str, TermEntry], dict[str, Any]]:
     cdb = CDB.load(cdb_path)
+    return disease_lexicon_from_cdb(cdb, max_words, strict_single_word)
+
+
+def disease_lexicon_from_cdb(cdb: CDB, max_words: int, strict_single_word: bool) -> tuple[dict[str, TermEntry], dict[str, Any]]:
     disease_type = cdb.type_id2info[DISEASE_TYPE_ID]
     disease_cuis = set(disease_type.cuis)
     lexicon: dict[str, TermEntry] = {}
@@ -340,6 +345,35 @@ def build_disease_lexicon(cdb_path: str, max_words: int, strict_single_word: boo
     stats["max_words"] = max_words
     stats["strict_single_word"] = strict_single_word
     return lexicon, dict(stats)
+
+
+def write_run_lexicon(path: Path, cdb: CDB, cdb_path: Path) -> None:
+    lexicon, stats = disease_lexicon_from_cdb(cdb, max_words=8, strict_single_word=True)
+    mkdir_private(path.parent)
+    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
+    with gzip.open(temporary, "wt", encoding="utf-8", compresslevel=1) as stream:
+        stream.write(json.dumps({"format": 1, "cdb_path": str(cdb_path.resolve()),
+                                 "max_words": 8, "strict_single_word": True, "stats": stats}) + "\n")
+        for entry in lexicon.values():
+            stream.write(json.dumps(entry.__dict__, ensure_ascii=False) + "\n")
+    chmod_private(temporary)
+    temporary.replace(path)
+
+
+def read_run_lexicon(path: Path, cdb_path: str, max_words: int, strict_single_word: bool):
+    with gzip.open(path, "rt", encoding="utf-8") as stream:
+        header = json.loads(next(stream))
+        if (header.get("format") != 1 or header.get("cdb_path") != str(Path(cdb_path).resolve())
+                or header.get("max_words") != max_words
+                or header.get("strict_single_word") != strict_single_word):
+            raise ValueError("Per-run ontology lexicon does not match the requested CDB/settings")
+        lexicon = {}
+        for line in stream:
+            entry = TermEntry(**json.loads(line))
+            lexicon[entry.norm] = entry
+    if len(lexicon) != header["stats"]["lexicon_terms"]:
+        raise ValueError("Incomplete per-run ontology lexicon")
+    return lexicon, header["stats"]
 
 
 def load_notes(path: Path) -> dict[str, dict[str, str]]:
@@ -552,7 +586,11 @@ def main() -> int:
         return 2
 
     strict_single_word = not args.allow_broad_single_word
-    lexicon, lexicon_stats = build_disease_lexicon(args.cdb_path, max_words=args.max_words, strict_single_word=strict_single_word)
+    if args.lexicon_jsonl_gz:
+        lexicon, lexicon_stats = read_run_lexicon(Path(args.lexicon_jsonl_gz), args.cdb_path,
+                                               args.max_words, strict_single_word)
+    else:
+        lexicon, lexicon_stats = build_disease_lexicon(args.cdb_path, max_words=args.max_words, strict_single_word=strict_single_word)
     outputs = []
     for i, (notes_path, candidate_path, output_dir) in enumerate(zip(args.notes_jsonl_gz, args.candidate_jsonl, args.output_dir)):
         name = args.name[i] if i < len(args.name) else Path(output_dir).name

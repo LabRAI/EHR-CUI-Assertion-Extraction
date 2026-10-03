@@ -24,6 +24,10 @@ If you are using this package to run extraction at Harvard, start with
 [`docs/harvard_default_handoff.md`](docs/harvard_default_handoff.md). It is a
 fixed one-run handoff: fill three local paths in one SLURM template and submit.
 
+This checkout includes validated CPU execution improvements; see
+[`docs/cpu_efficiency.md`](docs/cpu_efficiency.md) for the paired runtime and
+unchanged-output checks. The fixed handoff command is the same.
+
 For the current validation scope and limitations, see
 [`docs/validation.md`](docs/validation.md).
 
