@@ -15,8 +15,12 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import multiprocessing as mp
 import re
-from collections import Counter
+from collections import Counter, deque
+from concurrent.futures import ProcessPoolExecutor
+from functools import lru_cache
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -275,6 +279,7 @@ def norm(text: Any) -> str:
     return clean(text).strip(" :;,.()[]{}").lower()
 
 
+@lru_cache(maxsize=8192)
 def flexible_target(span: str) -> str:
     span = clean(span)
     if not span:
@@ -283,11 +288,22 @@ def flexible_target(span: str) -> str:
     return r"(?<!\w)" + r"\s+".join(pieces) + r"(?!\w)"
 
 
+@lru_cache(maxsize=64)
+def _target_occurrences(text: str, span: str) -> tuple[re.Match[str], ...]:
+    pattern = compiled_target(span)
+    if pattern is None:
+        return ()
+    return tuple(pattern.finditer(text))
+
+
+@lru_cache(maxsize=8192)
+def compiled_target(span: str) -> re.Pattern[str] | None:
+    pattern = flexible_target(span)
+    return re.compile(pattern, re.I) if pattern else None
+
+
 def target_occurrences(text: str, span: str) -> list[re.Match[str]]:
-    pat = flexible_target(span)
-    if not pat:
-        return []
-    return list(re.finditer(pat, text, re.I))
+    return list(_target_occurrences(text, span))
 
 
 def bounded_between(left: int, right: int, text: str) -> str:
@@ -999,12 +1015,51 @@ def overlay_row(row: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     return out, old != new
 
 
+def process_lines(lines: list[str]) -> tuple[str, int, int, dict[str, Counter]]:
+    output = []
+    counts = {key: Counter() for key in ("old", "new", "reason", "change")}
+    changed = 0
+    for line in lines:
+        row = json.loads(line)
+        out, did_change = overlay_row(row)
+        old = out.get("assertion_scope_overlay_previous") or "present"
+        new = out.get("assertion_status_preview") or "present"
+        changed += int(did_change)
+        counts["old"][old] += 1
+        counts["new"][new] += 1
+        counts["reason"][out.get("assertion_scope_overlay_reason") or "unknown"] += 1
+        if did_change:
+            counts["change"][f"{old}->{new}"] += 1
+        output.append(json.dumps(out, ensure_ascii=False) + "\n")
+    return "".join(output), len(lines), changed, counts
+
+
+def processed_batches(stream, workers: int):
+    lines = (line for line in stream if line.strip())
+    batches = iter(lambda: list(islice(lines, 512)), [])
+    if workers == 1:
+        for batch in batches:
+            yield process_lines(batch)
+        return
+    # Bound queued clinical text and preserve input order and summary tie order.
+    with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("fork")) as pool:
+        pending = deque(pool.submit(process_lines, batch) for batch in islice(batches, 2 * workers))
+        while pending:
+            yield pending.popleft().result()
+            batch = next(batches, None)
+            if batch is not None:
+                pending.append(pool.submit(process_lines, batch))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--summary-json", required=True)
+    parser.add_argument("--workers", type=int, default=1)
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be positive")
 
     total = 0
     changed = 0
@@ -1014,21 +1069,14 @@ def main() -> int:
     change_counts: Counter[str] = Counter()
 
     with open_input(Path(args.input)) as in_fh, open_output(Path(args.output)) as out_fh:
-        for line in in_fh:
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            out, did_change = overlay_row(row)
-            old = out.get("assertion_scope_overlay_previous") or "present"
-            new = out.get("assertion_status_preview") or "present"
-            total += 1
-            changed += int(did_change)
-            old_counts[old] += 1
-            new_counts[new] += 1
-            reason_counts[out.get("assertion_scope_overlay_reason") or "unknown"] += 1
-            if did_change:
-                change_counts[f"{old}->{new}"] += 1
-            out_fh.write(json.dumps(out, ensure_ascii=False) + "\n")
+        for output, batch_total, batch_changed, counts in processed_batches(in_fh, args.workers):
+            total += batch_total
+            changed += batch_changed
+            old_counts.update(counts["old"])
+            new_counts.update(counts["new"])
+            reason_counts.update(counts["reason"])
+            change_counts.update(counts["change"])
+            out_fh.write(output)
 
     summary = {
         "input": args.input,

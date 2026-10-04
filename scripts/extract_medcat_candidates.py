@@ -690,17 +690,58 @@ def scoped_span_pattern(span: str) -> str:
     return rf"\b{re.escape(span_key)}\b"
 
 
+SCOPED_CONDITIONAL_TERMS = (
+    r"\b(if|unless|when|whenever|prn|as needed|if needed|if necessary|hold if|call if|return if|use as needed|take as needed)\b",
+    r"\b(if|unless|when|whenever|provided that|in case of|return if|call if)\b",
+    r"\b(prn|as needed|if needed|if necessary|use as needed|take as needed)\b",
+)
+SCOPED_NEGATION_TERMS = (
+    r"\b(no|none|neither|nor|without|w/o|denies|denied|negative for|no evidence of|no signs? of|absen(?:t|ce) of|lack of|free of)\b",
+    r"\b(did not|does not|failed to)\s+(?:show|reveal|demonstrate)",
+    r"\b(absent|negative|not seen|not present|ruled out|excluded)\b",
+    r"\bnormal\b",
+)
+SCOPED_POSSIBLE_TERMS = (
+    r"\b(possible|possibly|probable|probably|suspected|suspicious for|concern(?:ing)? for|"
+    r"question of|rule out|r/o|cannot rule out|cannot exclude|cannot be excluded|"
+    r"may have|may represent|may reflect|might represent|could represent|could reflect|"
+    r"suggestive of|compatible with|consistent with)\b",
+    r"\b(cannot be excluded|cannot exclude|cannot rule out|rule out|r/o)\b",
+)
+SCOPED_HYPOTHETICAL_TERMS = (
+    r"\b(should|would|consider|monitor for|watch for|plan to|evaluate for)\b",
+    r"\b(should|would|consider|monitor|watch|plan)\b",
+)
+SCOPED_HISTORICAL_TERM = (
+    r"\b(history of|h/o|hx of|past medical history|past surgical history|pmh|pmhx|"
+    r"history includes|previous|previously|prior|remote|former|status post|s/p|underwent|"
+    r"was diagnosed|were diagnosed|had been diagnosed|known|longstanding|home meds include|home medications include|home med includes)\b"
+)
+SCOPED_CUE_PATTERNS = tuple(re.compile("|".join(terms), re.I) for terms in (
+    SCOPED_CONDITIONAL_TERMS, SCOPED_NEGATION_TERMS, SCOPED_POSSIBLE_TERMS,
+    SCOPED_HYPOTHETICAL_TERMS, (SCOPED_HISTORICAL_TERM,),
+))
+
+
+@lru_cache(maxsize=1024)
+def has_scoped_cue(text: str, kind: int) -> bool:
+    # These are the exact cue subexpressions used below: no cue proves no match.
+    return bool(SCOPED_CUE_PATTERNS[kind].search(text))
+
+
 def has_scoped_conditional(text: str, span: str) -> bool:
     target = scoped_span_pattern(span)
     if not target:
         return bool(CONDITIONAL_CUE.search(text))
-    for match in re.finditer(rf"{target}[^.;:]{{0,100}}\b(if|unless|when|whenever|prn|as needed|if needed|if necessary|hold if|call if|return if|use as needed|take as needed)\b", text, re.I):
+    if not has_scoped_cue(text, 0):
+        return False
+    for match in re.finditer(rf"{target}[^.;:]{{0,100}}{SCOPED_CONDITIONAL_TERMS[0]}", text, re.I):
         middle = text[match.start() : match.end()]
         if not re.search(r"\b(consider|monitor for|watch for|evaluate for|plan to|think about|suggest)\b", middle, re.I):
             return True
     return bool(
-        re.search(rf"\b(if|unless|when|whenever|provided that|in case of|return if|call if)\b[^.;:]{{0,140}}{target}", text, re.I)
-        or re.search(rf"\b(prn|as needed|if needed|if necessary|use as needed|take as needed)\b[^.;:]{{0,100}}{target}", text, re.I)
+        re.search(rf"{SCOPED_CONDITIONAL_TERMS[1]}[^.;:]{{0,140}}{target}", text, re.I)
+        or re.search(rf"{SCOPED_CONDITIONAL_TERMS[2]}[^.;:]{{0,100}}{target}", text, re.I)
     )
 
 
@@ -708,17 +749,18 @@ def has_scoped_negation(text: str, span: str) -> bool:
     target = scoped_span_pattern(span)
     if not target:
         return bool(NEGATION_CUE.search(text))
+    if not has_scoped_cue(text, 1):
+        return False
     return bool(
         re.search(
-            rf"\b(no|none|neither|nor|without|w/o|denies|denied|negative for|"
-            rf"no evidence of|no signs? of|absen(?:t|ce) of|lack of|free of)\b[^.;:]{{0,140}}{target}",
+            rf"{SCOPED_NEGATION_TERMS[0]}[^.;:]{{0,140}}{target}",
             text,
             re.I,
         )
-        or re.search(rf"\b(did not|does not|failed to)\s+(?:show|reveal|demonstrate)[^.;:]{{0,140}}{target}", text, re.I)
-        or re.search(rf"{target}[^.;:]{{0,80}}\b(absent|negative|not seen|not present|ruled out|excluded)\b", text, re.I)
-        or re.search(rf"\bnormal\b[^.;:]{{0,60}}{target}", text, re.I)
-        or re.search(rf"{target}[^.;:]{{0,60}}\bnormal\b", text, re.I)
+        or re.search(rf"{SCOPED_NEGATION_TERMS[1]}[^.;:]{{0,140}}{target}", text, re.I)
+        or re.search(rf"{target}[^.;:]{{0,80}}{SCOPED_NEGATION_TERMS[2]}", text, re.I)
+        or re.search(rf"{SCOPED_NEGATION_TERMS[3]}[^.;:]{{0,60}}{target}", text, re.I)
+        or re.search(rf"{target}[^.;:]{{0,60}}{SCOPED_NEGATION_TERMS[3]}", text, re.I)
     )
 
 
@@ -726,27 +768,28 @@ def has_scoped_possible(text: str, span: str) -> bool:
     target = scoped_span_pattern(span)
     if not target:
         return bool(POSSIBLE_CUE.search(text))
+    if not has_scoped_cue(text, 2):
+        return False
     for match in re.finditer(
-        rf"\b(possible|possibly|probable|probably|suspected|suspicious for|concern(?:ing)? for|"
-        rf"question of|rule out|r/o|cannot rule out|cannot exclude|cannot be excluded|"
-        rf"may have|may represent|may reflect|might represent|could represent|could reflect|"
-        rf"suggestive of|compatible with|consistent with)\b[^.;:]{{0,140}}{target}",
+        rf"{SCOPED_POSSIBLE_TERMS[0]}[^.;:]{{0,140}}{target}",
         text,
         re.I,
     ):
         middle = text[match.start() : match.end()]
         if not re.search(r"\b(after|with|on|from|due to|because|in|during|through|of)\b", middle, re.I):
             return True
-    return bool(re.search(rf"{target}[^.;:]{{0,120}}\b(cannot be excluded|cannot exclude|cannot rule out|rule out|r/o)\b", text, re.I))
+    return bool(re.search(rf"{target}[^.;:]{{0,120}}{SCOPED_POSSIBLE_TERMS[1]}", text, re.I))
 
 
 def has_scoped_hypothetical(text: str, span: str) -> bool:
     target = scoped_span_pattern(span)
     if not target:
         return bool(HYPOTHETICAL_CUE.search(text))
+    if not has_scoped_cue(text, 3):
+        return False
     return bool(
-        re.search(rf"\b(should|would|consider|monitor for|watch for|plan to|evaluate for)\b[^.;:]{{0,140}}{target}", text, re.I)
-        or re.search(rf"{target}[^.;:]{{0,100}}\b(should|would|consider|monitor|watch|plan)\b", text, re.I)
+        re.search(rf"{SCOPED_HYPOTHETICAL_TERMS[0]}[^.;:]{{0,140}}{target}", text, re.I)
+        or re.search(rf"{target}[^.;:]{{0,100}}{SCOPED_HYPOTHETICAL_TERMS[1]}", text, re.I)
     )
 
 
@@ -754,11 +797,11 @@ def has_scoped_historical(text: str, span: str) -> bool:
     target = scoped_span_pattern(span)
     if not target:
         return bool(HISTORICAL_CUE.search(text))
+    if not has_scoped_cue(text, 4):
+        return False
     return bool(
         re.search(
-            rf"\b(history of|h/o|hx of|past medical history|past surgical history|pmh|pmhx|"
-            rf"history includes|previous|previously|prior|remote|former|status post|s/p|underwent|"
-            rf"was diagnosed|were diagnosed|had been diagnosed|known|longstanding|home meds include|home medications include|home med includes)\b[^.;:]{{0,160}}{target}",
+            rf"{SCOPED_HISTORICAL_TERM}[^.;:]{{0,160}}{target}",
             text,
             re.I,
         )

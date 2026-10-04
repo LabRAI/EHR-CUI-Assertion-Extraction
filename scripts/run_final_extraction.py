@@ -209,6 +209,7 @@ def main() -> int:
             "--input", str(ontology / "medcat_candidates.jsonl.gz"),
             "--output", str(assertion / "medcat_candidates.jsonl.gz"),
             "--summary-json", str(reports / "assertion_summary.json"),
+            "--workers", str(config.get("workers", 1) if linked_rows >= 20_000 else 1),
         ]
     )
     run(
