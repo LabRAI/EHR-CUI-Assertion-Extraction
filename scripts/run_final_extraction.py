@@ -178,6 +178,7 @@ def main() -> int:
     reports = variant_root / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     reports.chmod(0o700)
+    post_workers = str(config.get("workers", 1) if linked_rows >= 20_000 else 1)
 
     run(
         [
@@ -187,6 +188,7 @@ def main() -> int:
             "--output-dir", str(measurement),
             "--summary-json", str(reports / "measurement_summary.json"),
             "--name", args.variant_name,
+            "--workers", post_workers,
         ]
     )
     ontology_command = [
@@ -197,6 +199,7 @@ def main() -> int:
         "--output-dir", str(ontology),
         "--summary-json", str(reports / "ontology_summary.json"),
         "--overlap-mode", "add_missing",
+        "--workers", post_workers,
     ]
     if args.allow_no_slurm:
         ontology_command.append("--allow-no-slurm")
@@ -209,7 +212,7 @@ def main() -> int:
             "--input", str(ontology / "medcat_candidates.jsonl.gz"),
             "--output", str(assertion / "medcat_candidates.jsonl.gz"),
             "--summary-json", str(reports / "assertion_summary.json"),
-            "--workers", str(config.get("workers", 1) if linked_rows >= 20_000 else 1),
+            "--workers", post_workers,
         ]
     )
     run(
@@ -221,6 +224,7 @@ def main() -> int:
             "--summary-json", str(reports / "final_refinement_summary.json"),
             "--name", args.variant_name,
             "--strictness", "aggressive",
+            "--workers", post_workers,
         ]
     )
 

@@ -213,6 +213,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", action="append", default=[], help="Optional run name for each input")
     parser.add_argument("--summary-json", required=True)
     parser.add_argument("--max-words", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--dump-lexicon-sample-json", default="")
     parser.add_argument("--allow-broad-single-word", action="store_true", help="Disable strict single-word filtering; usually not recommended")
     parser.add_argument(
@@ -501,6 +502,52 @@ def make_ontology_row(match: dict[str, Any], note_id: str, note: dict[str, str])
     }
 
 
+_NOTE_STATE = None
+
+
+def init_note_worker(notes, by_note, lexicon, max_words, overlap_mode):
+    global _NOTE_STATE
+    _NOTE_STATE = (notes, by_note, lexicon, max_words, overlap_mode)
+
+
+def process_note(note_id):
+    notes, by_note, lexicon, max_words, overlap_mode = _NOTE_STATE
+    rows = by_note.get(note_id, [])
+    note = notes.get(note_id)
+    if note is None:
+        return "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), 0, 0, 0, Counter()
+    matches = find_ontology_matches(note.get("text") or "", lexicon, max_words=max_words)
+    overlapping_match_indexes = set()
+    output = []
+    added = dropped = skipped = 0
+    counts = Counter()
+    for row in rows:
+        try:
+            ps, pe = int(row.get("span_start")), int(row.get("span_end"))
+        except (TypeError, ValueError):
+            ps, pe = -1, -1
+        row_is_disease = row.get("concept_category_preview") == "disease_or_diagnosis"
+        row_overlaps_match = False
+        for match_i, match in enumerate(matches):
+            if overlaps(ps, pe, int(match["span_start"]), int(match["span_end"])):
+                row_overlaps_match = True
+                overlapping_match_indexes.add(match_i)
+                if overlap_mode == "replace" and row_is_disease:
+                    dropped += 1
+                    break
+        if row_is_disease and overlap_mode == "replace" and row_overlaps_match:
+            continue
+        output.append(json.dumps(row, ensure_ascii=False) + "\n")
+    for match_i, match in enumerate(matches):
+        if overlap_mode == "add_missing" and match_i in overlapping_match_indexes:
+            skipped += 1
+            continue
+        output.append(json.dumps(make_ontology_row(match, note_id, note), ensure_ascii=False) + "\n")
+        added += 1
+        counts[match["entry"].norm] += 1
+    return "".join(output), added, dropped, skipped, counts
+
+
 def process_one(
     name: str,
     notes_path: Path,
@@ -509,6 +556,7 @@ def process_one(
     lexicon: dict[str, TermEntry],
     max_words: int,
     overlap_mode: str,
+    workers: int = 1,
 ) -> dict[str, Any]:
     mkdir_private(output_dir)
     out_path = output_dir / "medcat_candidates.jsonl.gz"
@@ -522,39 +570,20 @@ def process_one(
     dropped_overlap = 0
     skipped_overlap = 0
     match_counts = Counter()
+    from itertools import chain
+    from note_workers import ordered_note_results
+    note_ids = chain(notes, (key for key in base_by_note if key not in notes))
     with open_output(out_path) as out_fh:
-        for note_id, note in notes.items():
-            matches = find_ontology_matches(note.get("text") or "", lexicon, max_words=max_words)
-            overlapping_match_indexes: set[int] = set()
-            for row in base_by_note.get(note_id, []):
-                try:
-                    ps, pe = int(row.get("span_start")), int(row.get("span_end"))
-                except (TypeError, ValueError):
-                    ps, pe = -1, -1
-                row_is_disease = row.get("concept_category_preview") == "disease_or_diagnosis"
-                row_overlaps_match = False
-                for match_i, match in enumerate(matches):
-                    if overlaps(ps, pe, int(match["span_start"]), int(match["span_end"])):
-                        row_overlaps_match = True
-                        overlapping_match_indexes.add(match_i)
-                        if overlap_mode == "replace" and row_is_disease:
-                            dropped_overlap += 1
-                            break
-                if row_is_disease and overlap_mode == "replace" and row_overlaps_match:
-                    continue
-                out_fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-            for match_i, match in enumerate(matches):
-                if overlap_mode == "add_missing" and match_i in overlapping_match_indexes:
-                    skipped_overlap += 1
-                    continue
-                out_fh.write(json.dumps(make_ontology_row(match, note_id, note), ensure_ascii=False) + "\n")
-                added += 1
-                match_counts[match["entry"].norm] += 1
-        for note_id, rows in base_by_note.items():
-            if note_id in notes:
-                continue
-            for row in rows:
-                out_fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        for output, n_added, n_dropped, n_skipped, counts in ordered_note_results(
+                process_note, note_ids, workers=workers, initializer=init_note_worker,
+                initargs=(notes, base_by_note, lexicon, max_words, overlap_mode)):
+            out_fh.write(output)
+            added += n_added
+            dropped_overlap += n_dropped
+            skipped_overlap += n_skipped
+            match_counts.update(counts)
+    global _NOTE_STATE
+    _NOTE_STATE = None
     chmod_private(out_path)
 
     stats = {
@@ -578,6 +607,8 @@ def process_one(
 
 def main() -> int:
     args = parse_args()
+    if args.workers < 1:
+        raise SystemExit("--workers must be positive")
     if not os.environ.get("SLURM_JOB_ID") and not args.allow_no_slurm:
         print("ERROR: Run ontology overlay through SLURM, or use --allow-no-slurm for tiny synthetic tests.", file=sys.stderr)
         return 2
@@ -603,6 +634,7 @@ def main() -> int:
                 lexicon,
                 args.max_words,
                 args.overlap_mode,
+                args.workers,
             )
         )
 

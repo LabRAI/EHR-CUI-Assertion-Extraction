@@ -1090,6 +1090,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--disable-boundary-ranker", action="store_true")
     parser.add_argument("--disable-anchor-rescue", action="store_true")
     parser.add_argument("--disable-assertion-judge", action="store_true")
+    parser.add_argument("--workers", type=int, default=1)
     return parser.parse_args()
 
 
@@ -1988,13 +1989,8 @@ def add_contrast_coordinate_rows(
     return out, counts
 
 
-def process_rows(
-    notes: dict[str, dict[str, Any]],
-    input_paths: list[Path],
-    args: argparse.Namespace,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    rows_by_note: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    summary: dict[str, Any] = {
+def empty_summary(args):
+    return {
         "name": args.name,
         "strictness": args.strictness,
         "input_rows": 0,
@@ -2009,49 +2005,91 @@ def process_rows(
         "contrast_coordinate_splits": Counter(),
     }
 
+
+_NOTE_STATE = None
+
+
+def init_note_worker(notes, rows_by_note, args, serialize):
+    global _NOTE_STATE
+    _NOTE_STATE = (notes, rows_by_note, args, serialize)
+
+
+def process_note(note_id):
+    notes, rows_by_note, args, serialize = _NOTE_STATE
+    summary = empty_summary(args)
+    rows = []
+    note_meta = notes.get(note_id)
+    for row in rows_by_note[note_id]:
+        summary["input_rows"] += 1
+        out = dict(row)
+        if note_meta and str(note_meta.get("text") or ""):
+            note_text = str(note_meta.get("text") or "")
+            if not args.disable_boundary_ranker and refine_boundary(out, note_text):
+                summary["boundary_changes"][out.get("tracka_boundary_reason") or "unknown"] += 1
+            if refine_category(out, note_text)[0]:
+                summary["category_changes"][out.get("tracka_category_reason") or "unknown"] += 1
+            value_changed, value_reason = refine_qualitative_lab_result(out, note_text)
+            if value_changed:
+                summary["value_changes"][value_reason] += 1
+            if not args.disable_assertion_judge:
+                changed, reason = refine_assertion(out, note_text)
+                if changed:
+                    summary["assertion_changes"][reason] += 1
+            if not args.disable_strict_gate:
+                demote_reason = should_demote_strict(out, args.strictness)
+                if demote_reason and demote(out, demote_reason):
+                    summary["strict_demotions"][demote_reason] += 1
+        rows.append(out)
+    if not args.disable_boundary_ranker and note_id in notes:
+        rows, split_counts = add_contrast_coordinate_rows(note_id, notes[note_id], rows)
+        summary["contrast_coordinate_splits"].update(split_counts)
+    if not args.disable_anchor_rescue and note_id in notes:
+        rows, rescue_counts = add_anchor_rescue_rows(note_id, notes[note_id], rows)
+        summary["anchor_rescues"].update(rescue_counts)
+        rows, abbrev_counts = add_parenthetical_abbrev_rows(note_id, notes[note_id], rows)
+        summary["parenthetical_abbrev_rescues"].update(abbrev_counts)
+    rows.sort(key=lambda r: (row_start(r), row_end(r), str(r.get("span") or ""), str(r.get("concept_id") or "")))
+    summary["output_rows"] = len(rows)
+    if serialize:
+        return "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows), summary
+    return rows, summary
+
+
+def note_results(notes, input_paths, args, *, serialize=False):
+    from note_workers import ordered_note_results
+    rows_by_note = defaultdict(list)
     for input_path in input_paths:
         for path in iter_prediction_files(input_path):
             with open_text(path) as fh:
                 for line in fh:
-                    if not line.strip():
-                        continue
-                    row = json.loads(line)
-                    summary["input_rows"] += 1
-                    note_id = str(row.get("note_row_id") or row.get("row_id") or row.get("note_id") or "")
-                    note_meta = notes.get(note_id)
-                    out = dict(row)
-                    if note_meta and str(note_meta.get("text") or ""):
-                        note_text = str(note_meta.get("text") or "")
-                        if not args.disable_boundary_ranker and refine_boundary(out, note_text):
-                            summary["boundary_changes"][out.get("tracka_boundary_reason") or "unknown"] += 1
-                        if refine_category(out, note_text)[0]:
-                            summary["category_changes"][out.get("tracka_category_reason") or "unknown"] += 1
-                        value_changed, value_reason = refine_qualitative_lab_result(out, note_text)
-                        if value_changed:
-                            summary["value_changes"][value_reason] += 1
-                        if not args.disable_assertion_judge:
-                            changed, reason = refine_assertion(out, note_text)
-                            if changed:
-                                summary["assertion_changes"][reason] += 1
-                        if not args.disable_strict_gate:
-                            demote_reason = should_demote_strict(out, args.strictness)
-                            if demote_reason and demote(out, demote_reason):
-                                summary["strict_demotions"][demote_reason] += 1
-                    rows_by_note[note_id].append(out)
+                    if line.strip():
+                        row = json.loads(line)
+                        note_id = str(row.get("note_row_id") or row.get("row_id") or row.get("note_id") or "")
+                        rows_by_note[note_id].append(row)
+    try:
+        yield from ordered_note_results(process_note, iter(sorted(rows_by_note)),
+                                       workers=getattr(args, "workers", 1),
+                                       initializer=init_note_worker,
+                                       initargs=(notes, rows_by_note, args, serialize))
+    finally:
+        global _NOTE_STATE
+        _NOTE_STATE = None
 
-    final_rows: list[dict[str, Any]] = []
-    for note_id, rows in sorted(rows_by_note.items(), key=lambda item: item[0]):
-        if not args.disable_boundary_ranker and note_id in notes:
-            rows, split_counts = add_contrast_coordinate_rows(note_id, notes[note_id], rows)
-            summary["contrast_coordinate_splits"].update(split_counts)
-        if not args.disable_anchor_rescue and note_id in notes:
-            rows, rescue_counts = add_anchor_rescue_rows(note_id, notes[note_id], rows)
-            summary["anchor_rescues"].update(rescue_counts)
-            rows, abbrev_counts = add_parenthetical_abbrev_rows(note_id, notes[note_id], rows)
-            summary["parenthetical_abbrev_rescues"].update(abbrev_counts)
-        rows.sort(key=lambda r: (row_start(r), row_end(r), str(r.get("span") or ""), str(r.get("concept_id") or "")))
+
+def merge_summary(summary, note_summary):
+    for key, value in note_summary.items():
+        if isinstance(value, Counter):
+            summary[key].update(value)
+        elif key in ("input_rows", "output_rows"):
+            summary[key] += value
+
+
+def process_rows(notes, input_paths, args):
+    summary = empty_summary(args)
+    final_rows = []
+    for rows, note_summary in note_results(notes, input_paths, args):
         final_rows.extend(rows)
-    summary["output_rows"] = len(final_rows)
+        merge_summary(summary, note_summary)
     return final_rows, summary
 
 
@@ -2069,6 +2107,8 @@ def serializable_summary(summary: dict[str, Any], output_path: Path, input_paths
 
 def main() -> int:
     args = parse_args()
+    if args.workers < 1:
+        raise SystemExit("--workers must be positive")
     if len(args.notes_jsonl_gz) != len(args.candidate_jsonl):
         # A single note file can still be used for multiple candidate files.
         if len(args.notes_jsonl_gz) != 1:
@@ -2084,10 +2124,11 @@ def main() -> int:
         pass
     output_path = output_dir / "medcat_candidates.jsonl.gz"
 
-    final_rows, summary = process_rows(notes, input_paths, args)
+    summary = empty_summary(args)
     with open_output(output_path) as out_fh:
-        for row in final_rows:
-            out_fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+        for output, note_summary in note_results(notes, input_paths, args, serialize=True):
+            out_fh.write(output)
+            merge_summary(summary, note_summary)
 
     summary_payload = serializable_summary(summary, output_path, input_paths)
     summary_path = Path(args.summary_json)

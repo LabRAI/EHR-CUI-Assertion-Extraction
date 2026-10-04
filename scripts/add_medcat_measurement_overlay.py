@@ -193,6 +193,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output-dir", required=True)
     p.add_argument("--summary-json", required=True)
     p.add_argument("--name", default="measurement_overlay")
+    p.add_argument("--workers", type=int, default=1)
     return p.parse_args()
 
 
@@ -429,8 +430,40 @@ def add_missing_rows(
     return output
 
 
+_NOTE_STATE = None
+
+
+def init_note_worker(notes, by_note, pattern_map):
+    global _NOTE_STATE
+    _NOTE_STATE = (notes, by_note, pattern_map)
+
+
+def process_note(note_id):
+    notes, by_note, pattern_map = _NOTE_STATE
+    note_meta = notes.get(note_id) or {}
+    note_text = str(note_meta.get("text") or "")
+    repaired_rows = []
+    repaired_count = 0
+    aliases = Counter()
+    for row in by_note[note_id]:
+        if note_text and row.get("filter_action") in TARGET_ACTIONS:
+            repaired, did_repair = repair_existing_row(row, note_text)
+            if did_repair:
+                repaired_rows.append(repaired)
+                repaired_count += 1
+                aliases[base.leading_lab_alias(repaired.get("span") or "") or "unknown"] += 1
+                continue
+        repaired_rows.append(row)
+    rows = add_missing_rows(note_id, note_meta, repaired_rows, pattern_map) if note_text else repaired_rows
+    rows.sort(key=lambda r: (int(r.get("span_start") or 0), int(r.get("span_end") or 0), str(r.get("span") or "")))
+    output = "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
+    return output, repaired_count, max(0, len(rows) - len(by_note[note_id])), aliases, len(rows)
+
+
 def main() -> int:
     args = parse_args()
+    if args.workers < 1:
+        raise SystemExit("--workers must be positive")
     if len(args.notes_jsonl_gz) != len(args.candidate_jsonl):
         raise SystemExit("--notes-jsonl-gz and --candidate-jsonl counts must match")
 
@@ -445,7 +478,7 @@ def main() -> int:
     out_path = out_dir / "medcat_candidates.jsonl.gz"
 
     summary = {"repaired_rows": 0, "added_rows": 0, "alias_counts": Counter()}
-    repaired_rows: list[dict[str, Any]] = []
+    by_note: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for candidate in args.candidate_jsonl:
         for path in iter_prediction_files(Path(candidate)):
             with open_text(path) as fh:
@@ -454,31 +487,21 @@ def main() -> int:
                         continue
                     row = json.loads(line)
                     note_id = str(row.get("note_row_id") or "")
-                    note_text = str((notes.get(note_id) or {}).get("text") or "")
-                    if note_text and row.get("filter_action") in TARGET_ACTIONS:
-                        repaired, did_repair = repair_existing_row(row, note_text)
-                        if did_repair:
-                            repaired_rows.append(repaired)
-                            summary["repaired_rows"] += 1
-                            summary["alias_counts"][base.leading_lab_alias(repaired.get("span") or "") or "unknown"] += 1
-                            continue
-                    repaired_rows.append(row)
+                    by_note[note_id].append(row)
 
-    by_note: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in repaired_rows:
-        by_note[str(row.get("note_row_id") or "")].append(row)
-    final_rows: list[dict[str, Any]] = []
-    for note_id, rows in sorted(by_note.items(), key=lambda item: item[0]):
-        note_meta = notes.get(note_id) or {}
-        note_text = str(note_meta.get("text") or "")
-        rows = add_missing_rows(note_id, note_meta, rows, pattern_map) if note_text else rows
-        rows.sort(key=lambda r: (int(r.get("span_start") or 0), int(r.get("span_end") or 0), str(r.get("span") or "")))
-        summary["added_rows"] += max(0, len(rows) - len(by_note[note_id]))
-        final_rows.extend(rows)
-
+    from note_workers import ordered_note_results
+    total_rows = 0
     with open_output(out_path) as out_fh:
-        for row in final_rows:
-            out_fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+        for output, repaired, added, aliases, count in ordered_note_results(
+                process_note, iter(sorted(by_note)), workers=args.workers,
+                initializer=init_note_worker, initargs=(notes, by_note, pattern_map)):
+            out_fh.write(output)
+            summary["repaired_rows"] += repaired
+            summary["added_rows"] += added
+            summary["alias_counts"].update(aliases)
+            total_rows += count
+    global _NOTE_STATE
+    _NOTE_STATE = None
 
     summary_path = Path(args.summary_json)
     summary_path.write_text(json.dumps({
@@ -488,12 +511,12 @@ def main() -> int:
             "repaired_rows": summary["repaired_rows"],
             "added_rows": summary["added_rows"],
             "alias_counts": dict(summary["alias_counts"]),
-            "total_rows": len(final_rows),
+            "total_rows": total_rows,
         },
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     chmod_private(out_path)
     chmod_private(summary_path)
-    print(json.dumps({"output": str(out_path), "summary": {"repaired_rows": summary["repaired_rows"], "added_rows": summary["added_rows"], "total_rows": len(final_rows)}}, indent=2, sort_keys=True))
+    print(json.dumps({"output": str(out_path), "summary": {"repaired_rows": summary["repaired_rows"], "added_rows": summary["added_rows"], "total_rows": total_rows}}, indent=2, sort_keys=True))
     return 0
 
 
