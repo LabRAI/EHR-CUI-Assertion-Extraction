@@ -26,6 +26,7 @@ from typing import Any, Iterable
 
 
 SPACE = re.compile(r"\s+")
+SENTENCE_BOUNDARY = re.compile(r"(?<!\d)[.!?](?!\d)|\n|;")
 SECTION_HEADER = re.compile(r"^\s*[A-Za-z][A-Za-z0-9 /,_()#&+-]{1,80}:?\s*$")
 KNOWN_SECTION_HEADERS = {
     "action",
@@ -384,12 +385,11 @@ def default_action_for_score(score: float) -> str:
 
 
 def sentence_for_span(text: str, start: int, end: int, max_chars: int) -> str:
-    boundary = re.compile(r"(?<!\d)[.!?](?!\d)|\n|;")
     left = -1
-    for match in boundary.finditer(text, 0, start):
+    for match in SENTENCE_BOUNDARY.finditer(text, 0, start):
         left = match.start()
     right = len(text)
-    for match in boundary.finditer(text, end):
+    for match in SENTENCE_BOUNDARY.finditer(text, end):
         right = match.start()
         break
     if right == len(text):
@@ -1203,15 +1203,11 @@ def infer_experiencer_preview(sentence: str, section: str, flags: set[str]) -> s
 
 def infer_context_cue(context: str, patterns: list[tuple[str, re.Pattern[str]]]) -> dict[str, Any]:
     """Return a conservative local cue without adding a second model pass."""
-
-    matches = []
     for label, pattern in patterns:
         match = pattern.search(context)
         if match:
-            matches.append({"label": label, "text": clean(match.group(0).lower())})
-    if not matches:
-        return {"label": None, "text": None}
-    return matches[0]
+            return {"label": label, "text": clean(match.group(0).lower())}
+    return {"label": None, "text": None}
 
 
 def infer_value_status(context: str) -> str:

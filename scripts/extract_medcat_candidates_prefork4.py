@@ -636,6 +636,10 @@ def main() -> int:
     cat = CAT.load_model_pack(str(modelpack_path))
     load_end = int(time.time())
     print(f"[prefork] model_loaded elapsed_seconds={load_end - load_start}", flush=True)
+    # MedCAT lazily rebuilds this read-only index on the first child lookup.
+    # Build it once before fork so every worker inherits the same index.
+    if hasattr(cat, "cdb") and hasattr(cat.cdb, "_reset_subnames"):
+        cat.cdb._reset_subnames()
 
     global GLOBAL_CAT, GLOBAL_POLICY, GLOBAL_ARGS, GLOBAL_TASKS
     GLOBAL_CAT = cat
