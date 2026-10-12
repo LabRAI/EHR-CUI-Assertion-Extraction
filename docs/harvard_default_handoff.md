@@ -5,11 +5,12 @@ There is one entry point and one run; no extra tuning is required.
 
 ## Run Once
 
-Clone the repository default branch, install the dependencies, and stage the licensed
+Clone the validated handoff branch, install the dependencies, and stage the licensed
 MedCAT assets outside the repository:
 
 ```bash
-git clone https://github.com/LabRAI/EHR-CUI-Assertion-Extraction.git
+git clone --branch harvard-numeric-structure-handoff-20261012 \
+  https://github.com/LabRAI/EHR-CUI-Assertion-Extraction.git
 cd EHR-CUI-Assertion-Extraction
 python3 -m venv .venv
 source .venv/bin/activate
