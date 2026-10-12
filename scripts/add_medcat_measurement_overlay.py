@@ -295,7 +295,8 @@ def repair_existing_row(row: dict[str, Any], note_text: str) -> tuple[dict[str, 
     sentence = base.sentence_for_span(note_text, new_start, new_end, 420)
     context_raw, ctx_start, ctx_end = base.context_with_marker(note_text, new_start, new_end)
     context, ctx_start, ctx_end = base.clean_context_with_span(context_raw, ctx_start, ctx_end)
-    value_parse = base.parse_lab_value(alias, spec["pretty_name"], context, ctx_start, ctx_end)
+    value_parse = base.parse_lab_value(alias, spec["pretty_name"], context, ctx_start, ctx_end,
+                                      note_text=note_text, note_start=new_start, note_end=new_end)
     if not value_parse.get("numeric_value"):
         return row, False
     updated = dict(row)
@@ -374,7 +375,8 @@ def add_missing_rows(
             sentence = base.sentence_for_span(note_text, start, end, 420)
             context_raw, ctx_start, ctx_end = base.context_with_marker(note_text, start, end)
             context, ctx_start, ctx_end = base.clean_context_with_span(context_raw, ctx_start, ctx_end)
-            value_parse = base.parse_lab_value(alias_key, spec["pretty_name"], context, ctx_start, ctx_end)
+            value_parse = base.parse_lab_value(alias_key, spec["pretty_name"], context, ctx_start, ctx_end,
+                                              note_text=note_text, note_start=start, note_end=end)
             if not value_parse.get("numeric_value"):
                 continue
             row = {

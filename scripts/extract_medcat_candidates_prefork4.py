@@ -225,7 +225,8 @@ def process_task(task_id: str) -> dict[str, Any]:
                 if normalized_lab_alias:
                     flags.add("lab_value_span_normalized")
                 value_parse = (
-                    base.parse_lab_value(source_value, pretty_name, evidence_context, context_span_start, context_span_end)
+                    base.parse_lab_value(source_value, pretty_name, evidence_context, context_span_start, context_span_end,
+                                         note_text=snippet, note_start=start, note_end=end)
                     if "lab_or_vital_span" in flags
                     else {
                         "numeric_value": None,

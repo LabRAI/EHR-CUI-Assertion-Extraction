@@ -33,6 +33,7 @@ caches were not flushed; these are single paired measurements.
 | MIMIC-style synthetic, 240 | Prior efficiency release | 57.70 s | 62.41 s | 0.92x |
 | MIMIC-style synthetic, reverse order | Prior efficiency release | 59.63 s | 58.40 s | 1.02x |
 | Adversarial synthetic, 360 | Prior efficiency release | 62.21 s | 57.28 s | 1.09x |
+| Natural MIMIC, 10,000 notes | Accepted CPU base | 3369.00 s | 3439.77 s | 0.98x |
 
 Natural-note runtime falls by 17.55%. The first small synthetic comparison was
 slower; reversing the order gave a small gain. Both are reported: no stable gain
@@ -108,7 +109,13 @@ The historical linker-only benchmark is a different timing contract. These
 measurements do not establish recovery of Harvard's reported fivefold slowdown;
 the next deployment check is the same private notes and hardware on both releases.
 
-A 10,000-natural-note paired test has been submitted with four CPUs and 68 GiB
-on both sides. It is not a completed scaling claim. The input contains 10,000
-distinct note IDs, retains natural duplicate text, and extends the same ordered
-1K sample. Both variants retain the existing 7,000-character linker cap.
+The completed 10,000-natural-note paired test used four CPUs and 192 GiB on both
+sides. The accepted CPU base took 3369.00 seconds and the current numeric
+candidate took 3439.77 seconds, a 2.10% candidate overhead. Slurm recorded a
+peak RSS of 152,122,572 KiB (about 145 GiB) for the job. This is an observed
+requirement for this dense 10K run, not a universal minimum; smaller or less
+dense batches may use less memory. The input contained 10,000 distinct note IDs
+and retained natural duplicate text. Both variants retained the existing
+7,000-character linker cap. The full comparison aligned 3,141,261 final rows;
+only six numeric fields changed, with no entity, assertion, or nonnumeric-field
+changes.

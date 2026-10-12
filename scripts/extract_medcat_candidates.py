@@ -17,6 +17,7 @@ import json
 import os
 import random
 import cached_regex as re
+import numeric_structure
 import sys
 import zipfile
 from collections import Counter, defaultdict
@@ -2252,7 +2253,41 @@ def infer_measurement_context(
     return "observed_patient"
 
 
-def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None = None, end: int | None = None) -> dict[str, Any]:
+def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None = None, end: int | None = None,
+                    *, note_text: str | None = None, note_start: int | None = None, note_end: int | None = None) -> dict[str, Any]:
+    if note_text is not None:
+        known_lab = bool(leading_lab_alias(span) or norm_key(pretty_name) in LAB_ALIASES)
+        structure = numeric_structure.match_value(note_text, note_start, note_end, span, pretty_name, known_lab)
+        if structure is not None:
+            structure.pop('_value_start')
+            value_end = structure.pop('_value_end')
+            matched_context, match_start, match_end = context_with_marker(note_text, note_start, value_end, 90, 130)
+            matched_context, match_start, match_end = clean_context_with_span(matched_context, match_start, match_end)
+            structure['unit'] = clean(structure.get('unit') or '') or default_unit_for_lab(set(aliases_for_lab(span, pretty_name)))
+            structure['value_text'] = clean(structure['value_text'])
+            structure['value_status'] = structure['value_status'] or infer_value_status_from_match(
+                span, pretty_name, structure['value_text'], matched_context, match_start, match_end, structure['numeric_value'])
+            structure['measurement_context'] = infer_measurement_context(span, pretty_name, matched_context, match_start, match_end)
+            return preserve_numeric_qualifier(structure)
+    return _parse_lab_value_context(span, pretty_name, context, start, end)
+
+
+@lru_cache(maxsize=2048)
+def _lab_value_pattern(alias: str):
+    escaped = re.escape(alias)
+    name_boundary = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
+    return re.compile(
+        rf"(?i){name_boundary}\s*(?:\([^)]{{0,30}}\))?\s*(?:[:=,\-]|\bof\b)?\s*"
+        rf"(?:is|was|are|were|estimated|approximately|about|around|~|at|"
+        rf"stable\s+at|normal\s+at|high\s+at|low\s+at|elevated\s+to|"
+        rf"increased\s+to|decreased\s+to|reduced\s+to|dropped\s+to|"
+        rf"current(?:ly)?|remains?|remained|measures?|measured|reported|returned|noted|revealed|showed|shows|found|result(?:ed)?|level(?:s)?(?:\s+of)?|value(?:d)?(?:\s+at|(?:\s+of)?)?)?\s*"
+        rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*"
+        rf"(?P<unit>{UNIT_PATTERN})?{LAB_INLINE_STATUS_PATTERN}(?:\s*(?P<trailing_unit>{UNIT_PATTERN}))?"
+    )
+
+
+def _parse_lab_value_context(span: str, pretty_name: str, context: str, start: int | None = None, end: int | None = None) -> dict[str, Any]:
     aliases = aliases_for_lab(span, pretty_name)
     alias_set = set(aliases)
     local_context, local_start, local_end = local_span_slice(context, start, end)
@@ -2285,17 +2320,7 @@ def parse_lab_value(span: str, pretty_name: str, context: str, start: int | None
         return preserve_numeric_qualifier(temperature_value)
 
     for alias in aliases:
-        escaped = re.escape(alias)
-        name_boundary = rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])"
-        pattern = re.compile(
-            rf"(?i){name_boundary}\s*(?:\([^)]{{0,30}}\))?\s*(?:[:=,\-]|\bof\b)?\s*"
-            rf"(?:is|was|are|were|estimated|approximately|about|around|~|at|"
-            rf"stable\s+at|normal\s+at|high\s+at|low\s+at|elevated\s+to|"
-            rf"increased\s+to|decreased\s+to|reduced\s+to|dropped\s+to|"
-            rf"current(?:ly)?|remains?|remained|measures?|measured|reported|returned|noted|revealed|showed|shows|found|result(?:ed)?|level(?:s)?(?:\s+of)?|value(?:d)?(?:\s+at|(?:\s+of)?)?)?\s*"
-            rf"(?P<comparator><=|>=|<|>)?\s*(?P<value>{NUMERIC_VALUE_PATTERN})\s*"
-            rf"(?P<unit>{UNIT_PATTERN})?{LAB_INLINE_STATUS_PATTERN}(?:\s*(?P<trailing_unit>{UNIT_PATTERN}))?"
-        )
+        pattern = _lab_value_pattern(alias)
         matches = [
             match
             for match in sort_matches_by_locality(list(pattern.finditer(local_context)), local_start, local_end)
@@ -3263,6 +3288,7 @@ def main() -> int:
                     evidence_context,
                     context_span_start,
                     context_span_end,
+                    note_text=snippet, note_start=start, note_end=end,
                 ) if "lab_or_vital_span" in flags else {
                     "numeric_value": None,
                     "unit": None,

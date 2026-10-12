@@ -5,12 +5,11 @@ There is one entry point and one run; no extra tuning is required.
 
 ## Run Once
 
-Clone the handoff branch/tag, install the dependencies, and stage the licensed
+Clone the repository default branch, install the dependencies, and stage the licensed
 MedCAT assets outside the repository:
 
 ```bash
-git clone --branch harvard-default-handoff-20260922 \
-  https://github.com/LabRAI/EHR-CUI-Assertion-Extraction.git
+git clone https://github.com/LabRAI/EHR-CUI-Assertion-Extraction.git
 cd EHR-CUI-Assertion-Extraction
 python3 -m venv .venv
 source .venv/bin/activate
@@ -37,6 +36,12 @@ sbatch slurm/templates/run_harvard_default.sbatch
 The template uses 4 CPU cores, 68 GB RAM, and automatic CPU worker detection.
 The output directory defaults to `./harvard_default_output`; set
 `OUTPUT_ROOT=/private/output/path` at submission time if desired.
+
+This is a single default run. Do not run an older tag or apply a separate
+numeric patch. The current default branch includes the bounded numeric-layout
+parser and falls back to the prior parser for unsupported or ambiguous layouts.
+The 68 GB template is the validated collaborator setting for the expected
+Harvard batch; a dense 10K-note MIMIC stress test used about 145 GiB peak RSS.
 
 ## Fixed Presettings
 
@@ -84,3 +89,7 @@ The main run manifest is:
 
 Share only aggregate manifests and summaries for troubleshooting. Keep notes,
 candidate files, modelpacks, CDB files, and evidence windows private.
+
+For handoff questions, report the repository commit from `git rev-parse HEAD`,
+the Slurm job ID, and the aggregate manifest. Do not send note text or
+candidate output files.

@@ -28,6 +28,10 @@ This checkout includes validated CPU execution improvements; see
 [`docs/cpu_efficiency.md`](docs/cpu_efficiency.md) for the paired runtime and
 unchanged-output checks. The fixed handoff command is the same.
 
+Selected numeric layout repairs are integrated into that same command; see
+[`docs/numeric_structures.md`](docs/numeric_structures.md) for supported formats,
+measured runtime, and validation limits. No separate patch command is needed.
+
 For the current validation scope and limitations, see
 [`docs/validation.md`](docs/validation.md).
 
@@ -248,7 +252,8 @@ unless `--allow-no-slurm` is explicitly supplied for local synthetic tests.
 ## Current Benchmark Reference
 
 On the internal 10K-note benchmark, the optimized prefork/batched linker path
-processed 10K notes on 4 CPU cores in about 35 minutes. Use
+processed 10K notes on 4 CPU cores in about 37 minutes for the accepted CPU
+base and about 38 minutes with the numeric candidate. Use
 `scripts/build_extraction_scaling_benchmark.py` and
 `scripts/summarize_extraction_scaling_benchmark.py` to reproduce a site-local
 runtime sweep.
