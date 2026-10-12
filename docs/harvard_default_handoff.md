@@ -9,7 +9,7 @@ Clone the validated handoff branch, install the dependencies, and stage the lice
 MedCAT assets outside the repository:
 
 ```bash
-git clone --branch harvard-numeric-structure-handoff-20261012 \
+git clone --branch numeric-structure-handoff-20261012 \
   https://github.com/LabRAI/EHR-CUI-Assertion-Extraction.git
 cd EHR-CUI-Assertion-Extraction
 python3 -m venv .venv
